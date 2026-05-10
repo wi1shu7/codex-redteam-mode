@@ -97,26 +97,6 @@ tests/
 .github/
 ```
 
-## Week 1 Scope
-
-| Area | Status |
-|---|---|
-| Structured state | done |
-| Modular hooks | done |
-| Cross-platform installer | done |
-| Validation | done |
-| Basic tests | done |
-| Docs baseline | done |
-
-## Roadmap
-
-| Week | Focus |
-|---|---|
-| Week 1 | hook architecture, installer, docs, validation |
-| Week 2 | richer phase routing, better conflict checks |
-| Week 3 | stronger OPSEC gates, mode profiles |
-| Week 4 | release hardening, community feedback |
-
 ## Known Limitations
 
 - This is a **control/profile layer**, not a full attack platform.
