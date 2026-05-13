@@ -139,6 +139,10 @@ enable red team mode
 /redteam off
 disable red team mode
 ```
+### 进入强制红队模式
+
+开启reteam on之后：
+进入redteam full
 
 ### 验证安装
 
@@ -264,7 +268,10 @@ model_instructions_file = './instruction.ctf.md'
 ## 贡献与致谢
 
 感谢米斯特安全团队的洺熙大佬提出的修改意见：加入语义判定。  
-洺熙X：@xishan12509850
+洺熙 X：@xishan12509850
+
+感谢Nirvana提出的修改意见：优化工作流程，实现覆盖安装
+Nirvana X：@Nirvana_543
 
 感谢 `qiushi-skill`、`hack-skills` 与 `Anthropic-Cybersecurity-Skills` 提供的方法层、技术路由层与 skill pack 结构参考。  
 参考项目：`qiushi-skill` / `yaklang/hack-skills` / `mukul975/Anthropic-Cybersecurity-Skills`
