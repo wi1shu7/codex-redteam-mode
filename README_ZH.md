@@ -1,25 +1,18 @@
 # Codex Red Team Opt-In Mode
 
-[English](./README.md) | 中文
+[English](./README.md)
 
-> **默认普通模式。只有在你明确开启时，才进入红队模式。**
-> 目前安装脚本还有问题，麻烦各位师傅自行手动配置（或者让codex配置）
+> 默认保持 normal，只有显式开启时才进入 red-team。
 
-这是一个面向 Codex 的**轻量级、分层路由型红队配置层**。
+这是一个面向 Codex 的**轻量、pack-first** 红队运行时 / 配置层。
 
-项目默认保持 **normal mode**，只有你显式开启时，才会进入 **red-team routing**。当前提供：
+它的目标不是把 Codex 变成自动化攻击平台
 
-- opt-in 红队模式
-- 轻量 hooks
-- 结构化 JSON 模式状态
-- 规则优先 + 语义兜底的 phase 检测
-- 会话隔离状态
-- 结构化红队任务编排
-- **phase → method → router → leaf** 四层路由
-- 对 `qiushi-skill`、`hack-skills`、`Anthropic-Cybersecurity-Skills` 的结构化集成参考
-- 根目录 `config.toml` + `instruction.ctf.md` 提示词布局
+## 项目说明
 
----
+- 这个仓库是 **GitHub 通用版**
+- 不应包含个人本地路径、私有目标数据或用户专属工具偏好
+- 文档描述必须和当前实际运行行为一致，不能写成“计划中的样子”
 
 ## 为什么做这个项目
 
@@ -35,69 +28,57 @@
 - **hooks 保持轻量**
 - **路由保持分层与克制**
 
----
+## 核心特性
 
-## 功能特性
+- opt-in 红队模式
+- `normal` / `redteam-light` / `redteam-full`
+- 结构化 JSON 运行时状态
+- 规则优先 + 语义兜底的 phase 检测
+- session 隔离状态文件
+- 轻量 prompt overlay
+- pack-first 路由主线：
 
-- **仅显式开启**
-  - 默认是 normal mode
-  - 必须显式开启才进入 red-team mode
+```text
+phase -> router -> pack -> leaf
+```
 
-- **分层路由**
-  - phase
-  - method
-  - router
-  - leaf
+## 覆盖场景
 
-- **skill 集成**
-  - `qiushi-skill` → 方法层
-  - `hack-skills` → 技术路由层
-  - `Anthropic-Cybersecurity-Skills` → skill pack 结构与 progressive disclosure 参考
+核心 phase：
 
-- **扩展后的红队域**
-  - web
-  - ad
-  - postex
-  - reverse
-  - code-audit
-  - payload
-  - evasion
+- web
+- ad
+- postex
+- reverse
+- code-audit
+- payload
+- evasion
 
-- **规则优先 + 语义兜底**
-  - 显式命令与强特征优先命中
-  - 对自然语言表达使用轻量语义兜底
+扩展 router / pack 家族：
 
-- **会话隔离**
-  - 一个会话不会覆盖另一个会话的模式状态
-
-- **结构化任务编排层**
-  - recon → strategy → exploit-dev → review → reporting
-  - 结构化 artifact
-  - review-before-delivery
-
-- **跨平台安装**
-  - Windows / macOS / Linux
-
-- **可验证**
-  - 安装验证
-  - hook 验证
-  - router 验证
-  - orchestration gate 验证
-  - 普通模式洁净性验证
-
----
+- recon
+- api
+- auth
+- injection
+- file
+- business logic
+- cloud
+- container / kubernetes
+- network / protocol
+- crypto
+- mobile
 
 ## 安装
 
-安装器现在默认执行**托管式增量安装**：
+安装器采用**托管式增量安装**：
 
-- 保留用户原有的 `AGENTS.md` 与 `hooks.json`
-- 在 `AGENTS.md` 中增量注入本项目的托管区块
-- 在 `hooks.json` 中增量注入本项目的托管 hooks
-- 直接删除旧版本遗留的托管运行时代码路径
-- 再写入当前版本运行时代码
-- 写入本地 install manifest 供后续升级使用
-- 安装后自动运行 validate
+- 保留用户原有 `AGENTS.md`
+- 保留用户原有 `hooks.json`
+- 只注入本仓库的托管区块
+- 删除本仓库旧版本 runtime 残留
+- 干净安装当前版本
+- 写入 install manifest
+- 安装后自动执行 validate
 
 ### Python
 
@@ -117,11 +98,9 @@ powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1
 python3 scripts/install.py
 ```
 
----
-
 ## 快速开始
 
-### 开启红队模式
+### 开启 red-team mode
 
 ```text
 进入红队模式
@@ -132,7 +111,7 @@ python3 scripts/install.py
 enable red team mode
 ```
 
-### 关闭红队模式
+### 关闭 red-team mode
 
 ```text
 退出红队模式
@@ -140,10 +119,6 @@ enable red team mode
 /redteam off
 disable red team mode
 ```
-### 进入强制红队模式
-
-开启reteam on之后：
-进入redteam full
 
 ### 验证安装
 
@@ -151,137 +126,74 @@ disable red team mode
 python scripts/validate.py
 ```
 
----
-
 ## 工作方式
 
-### 1. 模式门控
+### 运行时主线
 
-项目默认处于 **normal** 模式。
-
-除非你明确开启红队模式，否则：
-
-- 不会注入 offensive doctrine
-- 不会把普通任务强行解释成红队任务
-
-### 2. 轻量 hooks
-
-运行时 hook 刻意保持很小：
-
-- SessionStart 注入短上下文
-- 不做巨型 prompt 注入
-- 不做 always-on offensive 偏置
-
-### 3. 分层路由
-
-运行时现在会发出紧凑的 route envelope：
+当前实际路由主线是：
 
 ```text
-[security:redteam]
-[mode:redteam-light]
-[phase:web]
-[method:investigation-first]
-[router:auth-sec]
-[leaf:jwt-oauth-token-attacks]
+phase -> router -> pack -> leaf
 ```
 
-### 4. 结构化任务编排
+`method` 仍然存在，但只在确实有帮助时作为软提示使用，不再是主路由轴。
 
-对于更大的任务，项目提供轻量编排层：
+### 模式说明
 
-```text
-recon -> strategy -> exploit-dev -> review -> reporting
+| 模式 | 默认 | 典型用途 |
+|---|---:|---|
+| `normal` | 是 | 编码、文档、普通研究 |
+| `redteam-light` | 否 | 定向安全分析、规划、复核 |
+| `redteam-full` | 否 | 更强约束的红队工作流 |
+
+## 验证
+
+仓库内置了：
+
+- installer 检查
+- routing 测试
+- mode 切换测试
+- orchestration gate 检查
+- prompt-chain 检查
+
+可执行：
+
+```bash
+python -m unittest discover -s tests -p "test_*.py"
+python scripts/validate.py
 ```
 
-注意：
+## 已知限制
 
-- 这不是 always-on 自动攻击链
-- 它是一个**结构化规划与 gate 框架**
-
----
-
-## 仓库结构
-
-```text
-.github/
-config.toml
-instruction.ctf.md
-agents/
-  skills/
-    red-team-command-doctrine/
-codex/
-  AGENTS.md
-  hooks/
-  router/
-  orchestrator/
-docs/
-scripts/
-templates/
-tests/
-```
-
-当前仓库的**主提示词文件**改为：
-
-- `./instruction.ctf.md`
-
-根目录 `config.toml` 现在指向：
-
-```toml
-# Codex red-team profile
-model_instructions_file = './instruction.ctf.md'
-```
-
----
-
-## 验证内容
-
-当前项目会验证：
-
-- 模式开启/关闭
-- phase 路由
-- method / router / leaf 路由
-- 语义 fallback
-- 普通模式洁净性
-- 会话隔离
-- orchestration gates
-
----
-
-## 当前限制
-
-- 它是一个**控制层 / 配置层**，不是完整攻击平台
-- 不包含 RAG 或私有知识库检索
+- 这是控制层 / 配置层，不是完整攻击平台
+- prompt overlay 的实际效果仍依赖目标 Codex 环境
+- 用户本地私人 prompt 体系可能与仓库版不同
 - 实际执行深度仍依赖你的 MCP / 工具面
 
----
 
-## ⚠️ 免责声明
+⚠️ 免责声明
+本项目仅供授权渗透测试（Authorized Penetration Testing）、红队研究与防御性安全实验使用。
 
-**本项目仅供授权渗透测试（Authorized Penetration Testing）、红队研究与防御性安全实验使用。**
-
-- 仅限在你拥有明确授权的系统或环境中使用。
-- 未经授权用于第三方或生产系统属于禁止行为。
-- 作者及贡献者对误用、法律后果、服务中断或数据损失 **不承担任何责任**。
-- 使用本项目即表示你同意自行承担全部风险，并确保行为符合适用法律和规则。
-
----
+仅限在你拥有明确授权的系统或环境中使用。
+未经授权用于第三方或生产系统属于禁止行为。
+作者及贡献者对误用、法律后果、服务中断或数据损失 不承担任何责任。
+使用本项目即表示你同意自行承担全部风险，并确保行为符合适用法律和规则。
 
 ## 贡献与致谢
-
-感谢米斯特安全团队的洺熙大佬提出的修改意见：加入语义判定。  
+感谢米斯特安全团队的洺熙大佬提出的修改意见：加入语义判定，取消方法论，细分skill，让AI在工作阶段更智能。。
 洺熙 X：@xishan12509850
 
-感谢Nirvana提出的修改意见：优化工作流程，实现覆盖安装
-Nirvana X：@Nirvana_543
+感谢Nirvana提出的修改意见：优化工作流程，实现覆盖安装 Nirvana X：@Nirvana_543
 
-感谢 `qiushi-skill`、`hack-skills` 与 `Anthropic-Cybersecurity-Skills` 提供的方法层、技术路由层与 skill pack 结构参考。  
-参考项目：`qiushi-skill` / `yaklang/hack-skills` / `mukul975/Anthropic-Cybersecurity-Skills`
+感谢PINGS提出的修改意见：强化越狱文本
+
+感谢 qiushi-skill、hack-skills 与 Anthropic-Cybersecurity-Skills 提供的方法层、技术路由层与 skill pack 结构参考。
+参考项目：qiushi-skill / yaklang/hack-skills / mukul975/Anthropic-Cybersecurity-Skills
+
+## 贡献
 
 见 [CONTRIBUTING.md](./CONTRIBUTING.md)。
 
----
-
 ## 许可证
 
-MIT + authorized-use-only notice。  
-见 [LICENSE](./LICENSE)。
+MIT，见 [LICENSE](./LICENSE)。

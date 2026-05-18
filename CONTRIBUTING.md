@@ -1,32 +1,54 @@
 # Contributing
 
-## Principles
+Thank you for contributing to **Codex Red Team Mode**.
 
-- keep hooks lightweight
-- do not regress opt-in behavior
-- prefer explicit over magical behavior
-- preserve UTF-8 correctness
-- route by phase → method → router → leaf before expanding context
+This repository should remain a **generic GitHub edition**, not a copy of any personal local environment.
 
-## Workflow
+---
 
-1. run tests
-2. run validation
-3. keep docs in sync
-4. keep README and README_ZH consistent
-5. do not introduce heavy doctrine injection
+## Contribution rules
+
+- do not commit personal local paths
+- do not commit personal browser or tool preferences
+- do not commit private target data or private operation history
+- do not commit local-only prompts or overlays unless they are intentionally generalized for the repository
+- keep documentation aligned with actual runtime behavior
+- prefer compact, testable routing changes over large prompt additions
+
+---
+
+## Avoid
+
+- personal local configuration
+- private prompts or target-specific overlays
+- docs that describe behavior not implemented in code
+- heavy prompt additions that increase context cost without improving routing quality
 
 
-## Current Thanks
+---
 
-5.7 感谢米斯特安全团队的浩熙大佬提出的修改意见：加入语义判定。  
-浩熙X：@xishan12509850
+## Security notice
 
-5.11 感谢Nirvana提出的修改意见：优化工作流程，实现覆盖安装
-Nirvana X：@Nirvana_543
+This repository is intended for authorized penetration testing, red-team research, and defensive security experimentation.
 
-5.14感谢米斯特安全团队的浩熙大佬提出的修改意见：细分skill，让AI在工作阶段更智能（未实装）。  
-浩熙X：@xishan12509850
+Contributors should keep the GitHub version:
 
-感谢qiushi-skill、hack-skills与Anthropic-Cybersecurity-Skills提供的方法层、技术路由层与技能包结构参考。参考
-项目：qiushi-skill//yaklang/hack-skillsmukul975/Anthropic-Cybersecurity-Skills
+- generic
+- reproducible
+- reviewable
+- free of private operational data
+
+---
+
+##致谢
+5.7 感谢米斯特安全团队的洺熙大佬提出的修改意见：加入语义判定。
+洺熙X：@xishan12509850
+
+5.11 感谢Nirvana提出的修改意见：优化工作流程，实现覆盖安装 Nirvana X：@Nirvana_543
+
+5.14感谢米斯特安全团队的洺熙大佬提出的修改意见：取消方法论，细分skill，让AI在工作阶段更智能。
+洺熙X：@xishan12509850
+
+5.16感谢PINGS提出的修改意见：强化越狱文本
+
+感谢qiushi-skill、hack-skills与Anthropic-Cybersecurity-Skills提供的方法层、技术路由层与技能包结构参考。参考 项目：qiushi-skill//yaklang/hack-skillsmukul975/Anthropic-Cybersecurity-Skills
