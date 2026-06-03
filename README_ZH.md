@@ -1,16 +1,21 @@
 # Codex Red Team Opt-In Mode
 
-[English](./README.md)|[中文](./README_ZH.md)
+[English](./README.md) | [中文](./README_ZH.md)
 
 > 默认保持 normal，只有显式开启时才进入 red-team。
 
-这是一个面向 Codex 的红队配置层。
+这是一个面向 Codex 的**轻量、pack-first** 红队运行时 / 配置层。
 
-它的目标不是把 Codex 变成自动化攻击平台
+它的目标不是把 Codex 变成自动化攻击平台——而是为红队工作流提供结构化、分层路由，同时保持正常操作不受影响。
 
-## 为什么做这个项目
+## 项目说明
 
-很多“常驻红队提示词”最后都会变成两种坏结果：
+- 这个仓库是 **GitHub 通用版**
+- 不应包含个人本地路径、私有目标数据或用户专属工具偏好
+
+## 为什么做这个项目？
+
+很多"常驻红队提示词"最后都会变成两种坏结果：
 
 1. **污染普通工作**
 2. **注入过重，导致上下文膨胀**
@@ -24,8 +29,8 @@
 
 ## 核心特性
 
-- opt-in 红队模式
-- `normal` / `redteam-light` / `redteam-full`
+- 显式 opt-in 红队模式
+- 三种模式：`normal` / `redteam-light` / `redteam-full`
 - 结构化 JSON 运行时状态
 - 规则优先 + 语义兜底的 phase 检测
 - session 隔离状态文件
@@ -38,29 +43,29 @@ phase -> router -> pack -> leaf
 
 ## 覆盖场景
 
-核心 phase：
+**核心 Phase：**
 
 - web
-- ad
-- postex
-- reverse
-- code-audit
-- payload
-- evasion
+- ad（Active Directory）
+- postex（后渗透）
+- reverse（逆向工程）
+- code-audit（代码审计）
+- payload（载荷）
+- evasion（免杀规避）
 
-扩展 router / pack 家族：
+**扩展 Router / Pack 家族：**
 
-- recon
+- recon（侦察）
 - api
-- auth
-- injection
-- file
-- business logic
-- cloud
-- container / kubernetes
-- network / protocol
-- crypto
-- mobile
+- auth（认证）
+- injection（注入）
+- file（文件）
+- business logic（业务逻辑）
+- cloud（云）
+- container / kubernetes（容器）
+- network / protocol（网络/协议）
+- crypto（密码学）
+- mobile（移动端）
 
 ## 安装
 
@@ -94,22 +99,24 @@ python3 scripts/install.py
 
 ## 快速开始
 
-### 开启 red-team mode
+### 开启 Red Team Mode
 
 ```text
 进入红队模式
 开启红队模式
+
 /redteam on
 /redteam light
 /redteam full
 enable red team mode
 ```
 
-### 关闭 red-team mode
+### 关闭 Red Team Mode
 
 ```text
 退出红队模式
 关闭红队模式
+
 /redteam off
 disable red team mode
 ```
@@ -150,7 +157,7 @@ phase -> router -> pack -> leaf
 - orchestration gate 检查
 - prompt-chain 检查
 
-可执行：
+运行：
 
 ```bash
 python -m unittest discover -s tests -p "test_*.py"
@@ -164,25 +171,30 @@ python scripts/validate.py
 - 用户本地私人 prompt 体系可能与仓库版不同
 - 实际执行深度仍依赖你的 MCP / 工具面
 
+## ⚠️ 免责声明
 
-⚠️ 免责声明
-本项目仅供授权渗透测试（Authorized Penetration Testing）、红队研究与防御性安全实验使用。
+**本项目仅供授权渗透测试（Authorized Penetration Testing）、红队研究与防御性安全实验使用。**
 
-仅限在你拥有明确授权的系统或环境中使用。
-未经授权用于第三方或生产系统属于禁止行为。
-作者及贡献者对误用、法律后果、服务中断或数据损失 不承担任何责任。
-使用本项目即表示你同意自行承担全部风险，并确保行为符合适用法律和规则。
+- 仅限在你拥有**明确授权**的系统或环境中使用
+- 未经授权用于第三方或生产系统属于**禁止行为**
+- 作者及贡献者对误用、法律后果、服务中断或数据损失**不承担任何责任**
+- 使用本项目即表示你同意**自行承担全部风险**，并确保行为符合适用法律和法规
 
 ## 贡献与致谢
-感谢米斯特安全团队的洺熙大佬提出的修改意见：加入语义判定，取消方法论，细分skill，让AI在工作阶段更智能。。
-洺熙 X：@xishan12509850
 
-感谢Nirvana提出的修改意见：优化工作流程，实现覆盖安装 Nirvana X：@Nirvana_543
+### 个人贡献者
 
-感谢PINGS提出的修改意见：强化越狱文本
+- **洺熙**（米斯特安全团队）— 提出加入语义判定，取消方法论，细分 skill，让 AI 在工作阶段更智能。X: [@xishan12509850](https://x.com/xishan12509850)
+- **Nirvana** — 提出优化工作流程，实现覆盖安装。X: [@Nirvana_543](https://x.com/Nirvana_543)
+- **PINGS** — 提出强化越狱文本的建议
 
-感谢 qiushi-skill、hack-skills 与 Anthropic-Cybersecurity-Skills 提供的方法层、技术路由层与 skill pack 结构参考。
-参考项目：qiushi-skill / yaklang/hack-skills / mukul975/Anthropic-Cybersecurity-Skills
+### 参考项目
+
+特别感谢以下项目提供的方法层、技术路由层与 skill pack 结构参考：
+
+- [qiushi-skill](https://github.com/qiushi-L/qiushi-skill)
+- [yaklang/hack-skills](https://github.com/yaklang/hack-skills)
+- [mukul975/Anthropic-Cybersecurity-Skills](https://github.com/mukul975/Anthropic-Cybersecurity-Skills)
 
 ## 贡献
 

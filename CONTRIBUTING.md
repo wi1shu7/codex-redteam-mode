@@ -1,54 +1,66 @@
 # Contributing
 
-Thank you for contributing to **Codex Red Team Mode**.
+Thank you for contributing to **Codex Red Team Opt-In Mode**!
 
 This repository should remain a **generic GitHub edition**, not a copy of any personal local environment.
 
 ---
 
-## Contribution rules
+## Contribution Rules
 
-- do not commit personal local paths
-- do not commit personal browser or tool preferences
-- do not commit private target data or private operation history
-- do not commit local-only prompts or overlays unless they are intentionally generalized for the repository
-- keep documentation aligned with actual runtime behavior
-- prefer compact, testable routing changes over large prompt additions
+- Do not commit personal local paths
+- Do not commit personal browser or tool preferences
+- Do not commit private target data or private operation history
+- Do not commit local-only prompts or overlays unless they are intentionally generalized for the repository
+- Keep documentation aligned with actual runtime behavior
+- Prefer compact, testable routing changes over large prompt additions
 
 ---
 
 ## Avoid
 
-- personal local configuration
-- private prompts or target-specific overlays
-- docs that describe behavior not implemented in code
-- heavy prompt additions that increase context cost without improving routing quality
-
+- Personal local configuration
+- Private prompts or target-specific overlays
+- Docs that describe behavior not implemented in code
+- Heavy prompt additions that increase context cost without improving routing quality
 
 ---
 
-## Security notice
+## Security Notice
 
-This repository is intended for authorized penetration testing, red-team research, and defensive security experimentation.
+This repository is intended for **authorized penetration testing, red-team research, and defensive security experimentation**.
 
 Contributors should keep the GitHub version:
 
-- generic
-- reproducible
-- reviewable
-- free of private operational data
+- **Generic** — no personal environment specifics
+- **Reproducible** — anyone should be able to install and use it
+- **Reviewable** — changes should be easy to audit
+- **Free of private operational data** — no target info, no internal tool configs
 
 ---
 
-##致谢
-5.7 感谢米斯特安全团队的洺熙大佬提出的修改意见：加入语义判定。
-洺熙X：@xishan12509850
+## Acknowledgements / 致谢
 
-5.11 感谢Nirvana提出的修改意见：优化工作流程，实现覆盖安装 Nirvana X：@Nirvana_543
+### Individual Contributors / 个人贡献者
 
-5.14感谢米斯特安全团队的洺熙大佬提出的修改意见：取消方法论，细分skill，让AI在工作阶段更智能。
-洺熙X：@xishan12509850
+- **Mingxi / 洺熙** (Mister Security Team / 米斯特安全团队)
+  - 2026-05-07: Suggested adding semantic judgment / 提出加入语义判定
+  - 2026-05-14: Suggested removing methodology and subdividing skills for smarter AI behavior during work phases / 提出取消方法论，细分 skill，让 AI 在工作阶段更智能
+  - X: [@xishan12509850](https://x.com/xishan12509850)
 
-5.16感谢PINGS提出的修改意见：强化越狱文本
+- **Nirvana**
+  - 2026-05-11: Suggested workflow optimization and overlay installation enablement / 提出优化工作流程，实现覆盖安装
+  - X: [@Nirvana_543](https://x.com/Nirvana_543)
 
-感谢qiushi-skill、hack-skills与Anthropic-Cybersecurity-Skills提供的方法层、技术路由层与技能包结构参考。参考 项目：qiushi-skill//yaklang/hack-skillsmukul975/Anthropic-Cybersecurity-Skills
+- **PINGS**
+  - 2026-05-16: Suggestions for enhancing jailbreak text / 提出强化越狱文本的建议
+
+### Reference Projects / 参考项目
+
+Special thanks to the following projects for providing method layer, technology routing layer, and skill pack structure references:
+
+感谢以下项目提供的方法层、技术路由层与技能包结构参考：
+
+- [qiushi-skill](https://github.com/qiushi-L/qiushi-skill)
+- [yaklang/hack-skills](https://github.com/yaklang/hack-skills)
+- [mukul975/Anthropic-Cybersecurity-Skills](https://github.com/mukul975/Anthropic-Cybersecurity-Skills)
