@@ -7,15 +7,15 @@ from typing import Any, Optional
 ENABLE_PATTERNS = [
     (r"/redteam\s+full\b", "redteam-full"),
     (r"/redteam\s+light\b", "redteam-light"),
-    (r"进入红队模式", "redteam-light"),
-    (r"开启红队模式", "redteam-light"),
     (r"/redteam\s+on\b", "redteam-light"),
+    ("\u8fdb\u5165\u7ea2\u961f\u6a21\u5f0f", "redteam-light"),
+    ("\u5f00\u542f\u7ea2\u961f\u6a21\u5f0f", "redteam-light"),
     (r"enable\s+red\s*team\s*mode", "redteam-light"),
 ]
 
 DISABLE_PATTERNS = [
-    r"退出红队模式",
-    r"关闭红队模式",
+    "\u9000\u51fa\u7ea2\u961f\u6a21\u5f0f",
+    "\u5173\u95ed\u7ea2\u961f\u6a21\u5f0f",
     r"/redteam\s+off\b",
     r"disable\s+red\s*team\s*mode",
 ]
@@ -24,6 +24,18 @@ OPSEC_PATTERNS = [
     (r"/opsec\s+strict\b", "strict"),
     (r"/opsec\s+balanced\b", "balanced"),
 ]
+
+SESSION_ID_KEYS = (
+    "session_id",
+    "sessionId",
+    "thread_id",
+    "threadId",
+    "conversation_id",
+    "conversationId",
+    "chat_id",
+    "chatId",
+    "id",
+)
 
 
 def decode_stdin(data: bytes) -> str:
@@ -41,8 +53,7 @@ def load_payload(raw: str) -> Any:
     return json.loads(raw)
 
 
-def _extract_content(item: dict) -> str:
-    content = item.get("content")
+def _extract_text_block(content: Any) -> str:
     if isinstance(content, str):
         return content
     if isinstance(content, list):
@@ -50,17 +61,10 @@ def _extract_content(item: dict) -> str:
         for block in content:
             if isinstance(block, dict) and isinstance(block.get("text"), str):
                 parts.append(block["text"])
+            elif isinstance(block, str):
+                parts.append(block)
         return "\n".join(parts)
     return ""
-
-
-def _is_user_message(item: dict) -> bool:
-    role = item.get("role", "")
-    if role in ("user", "human"):
-        return True
-    if item.get("type") == "user":
-        return True
-    return False
 
 
 def extract_prompt(payload: Any) -> str:
@@ -79,18 +83,19 @@ def extract_prompt(payload: Any) -> str:
         for item in reversed(messages):
             if not isinstance(item, dict):
                 continue
-            if _is_user_message(item):
-                content = _extract_content(item)
-                if content.strip():
-                    return content
-        return ""
-
+            role = str(item.get("role", "")).lower()
+            if role and role != "user":
+                continue
+            text = _extract_text_block(item.get("content"))
+            if text.strip():
+                return text
+        for item in reversed(messages):
+            if not isinstance(item, dict):
+                continue
+            text = _extract_text_block(item.get("content"))
+            if text.strip():
+                return text
     return ""
-
-
-SESSION_ID_KEYS = (
-    "session_id","sessionId","thread_id","threadId","conversation_id","conversationId","chat_id","chatId",
-)
 
 
 def extract_session_id(payload: Any) -> Optional[str]:

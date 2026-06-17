@@ -1,3 +1,18 @@
 # Codex red-team profile
-# This path is resolved by Codex; ~/.codex/ is where install.py places instruction.ctf.md
-model_instructions_file = "~/.codex/instruction.ctf.md"
+model_instructions_file = './instruction.ctf.md'
+
+[features]
+hooks = true
+automation = true
+
+[automation]
+mode = "assisted"
+tool_priority = [
+  "WebFetch",
+  "Browser MCP",
+  "IDA MCP",
+  "JADX MCP",
+]
+mcp_inventory_files = []
+require_scope_for_network = true
+allow_restricted_actions = false

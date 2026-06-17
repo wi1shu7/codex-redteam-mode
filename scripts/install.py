@@ -4,7 +4,6 @@ from datetime import datetime
 from pathlib import Path
 APP_NAME='codex-redteam-optin-mode'; APP_VERSION='0.4.0'
 AGENTS_BLOCK_START='<!-- codex-redteam-optin-mode:start -->'; AGENTS_BLOCK_END='<!-- codex-redteam-optin-mode:end -->'
-CONFIG_BLOCK_START='# codex-redteam-optin-mode:start'; CONFIG_BLOCK_END='# codex-redteam-optin-mode:end'
 SESSION_STATUS='Loading session mode context'; PROMPT_STATUS='Checking mode-gated offensive routing'
 def color(text:str,code:str)->str: return text if os.environ.get('NO_COLOR') else f'\033[{code}m{text}\033[0m'
 def info(msg:str)->None: print(color(f'[INFO] {msg}','36'))
@@ -57,44 +56,6 @@ def remove_agents_block(codex_home:Path,dry_run:bool)->None:
     if dry_run: return
     current=dst.read_text(encoding='utf-8'); pattern=re.compile(rf'\n?{re.escape(AGENTS_BLOCK_START)}.*?{re.escape(AGENTS_BLOCK_END)}\n?', re.S); updated=pattern.sub('\n', current).strip()
     dst.write_text(updated+'\n', encoding='utf-8') if updated else dst.unlink()
-def managed_config_block(repo_root:Path)->str:
-    """Generate the managed config.toml block."""
-    config_path = repo_root / 'config.toml'
-    body = config_path.read_text(encoding='utf-8').strip() if config_path.exists() else ''
-    return f'{CONFIG_BLOCK_START}\n{body}\n{CONFIG_BLOCK_END}\n'
-
-def upsert_config_file(repo_root:Path, codex_home:Path, dry_run:bool)->None:
-    """Deploy config.toml to ~/.codex/config.toml with managed-block merging."""
-    dst = codex_home / 'config.toml'
-    block = managed_config_block(repo_root)
-    info(f'merge {repo_root / "config.toml"} -> {dst}')
-    if dry_run:
-        return
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    if dst.exists():
-        current = dst.read_text(encoding='utf-8')
-        pattern = re.compile(rf'{re.escape(CONFIG_BLOCK_START)}.*?{re.escape(CONFIG_BLOCK_END)}\n?', re.S)
-        merged = pattern.sub(lambda _: block, current) if pattern.search(current) else f"{current}{'' if current.endswith(chr(10)) else chr(10)}\n{block}"
-    else:
-        merged = block
-    dst.write_text(merged, encoding='utf-8')
-
-def remove_config_block(codex_home:Path, dry_run:bool)->None:
-    """Remove managed config.toml block on uninstall."""
-    dst = codex_home / 'config.toml'
-    if not dst.exists():
-        return
-    info(f'remove managed block from {dst}')
-    if dry_run:
-        return
-    current = dst.read_text(encoding='utf-8')
-    pattern = re.compile(rf'\n?{re.escape(CONFIG_BLOCK_START)}.*?{re.escape(CONFIG_BLOCK_END)}\n?', re.S)
-    updated = pattern.sub('\n', current).strip()
-    if updated:
-        dst.write_text(updated + '\n', encoding='utf-8')
-    else:
-        dst.unlink()
-
 def is_managed_hook(hook:dict)->bool:
     command=str(hook.get('command','')); status=str(hook.get('statusMessage',''))
     return 'session-start-context.py' in command or 'hook-security-context-hook.py' in command or status in {SESSION_STATUS, PROMPT_STATUS}
@@ -129,7 +90,7 @@ def run_validate(repo_root:Path,codex_home:Path,dry_run:bool)->None:
 def repo_skill_dirs(repo_root:Path)->list[Path]:
     skills_root=repo_root/'agents'/'skills'; return sorted(path for path in skills_root.iterdir() if path.is_dir()) if skills_root.exists() else []
 def managed_targets(repo_root:Path,codex_home:Path,agents_home:Path)->list[Path]:
-    targets=[codex_home/'config.toml',codex_home/'instruction.ctf.md',codex_home/'hooks'/'session-start-context.py',codex_home/'hooks'/'hook-security-context-hook.py',codex_home/'hooks'/'redteam_state.py',codex_home/'hooks'/'core',codex_home/'router',codex_home/'orchestrator',codex_home/'session_patcher']
+    targets=[codex_home/'instruction.ctf.md',codex_home/'config.toml',codex_home/'hooks'/'session-start-context.py',codex_home/'hooks'/'hook-security-context-hook.py',codex_home/'hooks'/'redteam_state.py',codex_home/'hooks'/'core',codex_home/'router',codex_home/'orchestrator',codex_home/'automation',codex_home/'session_patcher']
     targets.extend(agents_home/'skills'/skill_dir.name for skill_dir in repo_skill_dirs(repo_root)); return targets
 def legacy_cleanup_targets(codex_home:Path,agents_home:Path)->list[Path]:
     return [codex_home/'hooks'/'legacy-redteam-hook.py', agents_home/'skills'/'red-team-command-doctrine-old']
@@ -144,12 +105,12 @@ def load_manifest_targets(codex_home:Path)->list[Path]:
         except TypeError: pass
     return targets
 def write_manifest(codex_home:Path,targets:list[Path],dry_run:bool)->None:
-    manifest=manifest_path(codex_home); payload={'name':APP_NAME,'version':APP_VERSION,'installed_at':datetime.now().isoformat(timespec='seconds'),'managed_paths':[str(path) for path in targets],'merged_files':[str(codex_home/'config.toml'),str(codex_home/'AGENTS.md'),str(codex_home/'hooks.json')]}
+    manifest=manifest_path(codex_home); payload={'name':APP_NAME,'version':APP_VERSION,'installed_at':datetime.now().isoformat(timespec='seconds'),'managed_paths':[str(path) for path in targets],'merged_files':[str(codex_home/'AGENTS.md'),str(codex_home/'hooks.json')]}
     info(f'write manifest {manifest}')
     if dry_run: return
     manifest.parent.mkdir(parents=True, exist_ok=True); manifest.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding='utf-8')
 def upgrade_cleanup(codex_home:Path,agents_home:Path,default_targets:list[Path],dry_run:bool)->None:
-    manifest=manifest_path(codex_home); previous_targets=load_manifest_targets(codex_home); cleanup_targets=previous_targets or default_targets; protected={str(codex_home/'config.toml'),str(codex_home/'AGENTS.md'), str(codex_home/'hooks.json')}
+    manifest=manifest_path(codex_home); previous_targets=load_manifest_targets(codex_home); cleanup_targets=previous_targets or default_targets; protected={str(codex_home/'AGENTS.md'), str(codex_home/'hooks.json')}
     remove_path(manifest,dry_run); seen=set()
     for target in cleanup_targets + legacy_cleanup_targets(codex_home,agents_home):
         key=str(target)
@@ -159,7 +120,7 @@ def uninstall(repo_root:Path,codex_home:Path,agents_home:Path,dry_run:bool)->Non
     targets=load_manifest_targets(codex_home) or managed_targets(repo_root,codex_home,agents_home)
     for target in targets: remove_path(target,dry_run)
     for target in legacy_cleanup_targets(codex_home,agents_home): remove_path(target,dry_run)
-    remove_config_block(codex_home,dry_run); remove_agents_block(codex_home,dry_run); remove_managed_hooks(codex_home,dry_run); remove_path(manifest_path(codex_home),dry_run)
+    remove_agents_block(codex_home,dry_run); remove_managed_hooks(codex_home,dry_run); remove_path(manifest_path(codex_home),dry_run)
 def main()->None:
     parser=argparse.ArgumentParser(); parser.add_argument('--codex-home'); parser.add_argument('--agents-home'); parser.add_argument('--dry-run', action='store_true'); parser.add_argument('--uninstall', action='store_true'); args=parser.parse_args()
     repo_root=Path(__file__).resolve().parents[1]; codex_home=detect_codex_home(args.codex_home); agents_home=detect_agents_home(args.agents_home)
@@ -167,13 +128,14 @@ def main()->None:
     current_targets=managed_targets(repo_root,codex_home,agents_home)
     if args.uninstall: uninstall(repo_root,codex_home,agents_home,args.dry_run); good('uninstall complete'); return
     upgrade_cleanup(codex_home,agents_home,current_targets,args.dry_run)
-    copy_file(repo_root/'instruction.ctf.md', codex_home/'instruction.ctf.md', args.dry_run); seed_prompt_files(repo_root,codex_home,args.dry_run); upsert_config_file(repo_root,codex_home,args.dry_run); upsert_agents_file(repo_root,codex_home,args.dry_run)
+    copy_file(repo_root/'instruction.ctf.md', codex_home/'instruction.ctf.md', args.dry_run); copy_file(repo_root/'config.toml', codex_home/'config.toml', args.dry_run); seed_prompt_files(repo_root,codex_home,args.dry_run); upsert_agents_file(repo_root,codex_home,args.dry_run)
     copy_file(repo_root/'codex'/'hooks'/'session-start-context.py', codex_home/'hooks'/'session-start-context.py', args.dry_run)
     copy_file(repo_root/'codex'/'hooks'/'hook-security-context-hook.py', codex_home/'hooks'/'hook-security-context-hook.py', args.dry_run)
     copy_file(repo_root/'codex'/'hooks'/'redteam_state.py', codex_home/'hooks'/'redteam_state.py', args.dry_run)
     copy_tree(repo_root/'codex'/'hooks'/'core', codex_home/'hooks'/'core', args.dry_run)
     copy_tree(repo_root/'codex'/'router', codex_home/'router', args.dry_run)
     copy_tree(repo_root/'codex'/'orchestrator', codex_home/'orchestrator', args.dry_run)
+    copy_tree(repo_root/'codex'/'automation', codex_home/'automation', args.dry_run)
     copy_tree(repo_root/'codex'/'session_patcher', codex_home/'session_patcher', args.dry_run)
     for skill_dir in repo_skill_dirs(repo_root): copy_tree(skill_dir, agents_home/'skills'/skill_dir.name, args.dry_run)
     merge_hooks_json(repo_root,codex_home,args.dry_run); write_manifest(codex_home,current_targets,args.dry_run); run_validate(repo_root,codex_home,args.dry_run); good('install complete')

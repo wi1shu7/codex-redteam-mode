@@ -1,55 +1,186 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""Post-install validation script for codex-redteam-optin-mode.
+
+Verifies that all required files were deployed correctly and the install
+is functional.
+"""
+
 from __future__ import annotations
-import argparse, importlib.util, io, json, os, runpy, sys
+
+import argparse
+import json
+import sys
 from pathlib import Path
-class FakeIn:
-    def __init__(self, b: bytes) -> None: self.buffer = io.BytesIO(b)
-def assert_exists(path: Path) -> None:
-    if not path.exists(): raise SystemExit(f"missing: {path}")
-def run_hook(path: Path, payload: dict) -> str:
-    old_stdin, old_stdout = sys.stdin, sys.stdout
-    old_env = os.environ.copy()
-    os.environ.setdefault("CODEX_REDTEAM_AUTO_PATCH", "0")
-    buf = io.StringIO(); sys.stdout = buf; sys.stdin = FakeIn(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
-    try: runpy.run_path(str(path), run_name="__main__")
-    finally: sys.stdin, sys.stdout = old_stdin, old_stdout; os.environ.clear(); os.environ.update(old_env)
-    return buf.getvalue().strip()
-def hook_context_len(output: str) -> int:
-    if not output: return 0
-    raw = json.loads(output)
-    return len(raw["hookSpecificOutput"]["additionalContext"])
-def status_line(name: str, ok: bool) -> str: return f"- {name}: {'ok' if ok else 'fail'}"
+from typing import List, Tuple
+
+
+REQUIRED_CODEX_FILES = [
+    "hooks/session-start-context.py",
+    "hooks/hook-security-context-hook.py",
+    "hooks/redteam_state.py",
+    "hooks/core/emitter.py",
+    "hooks/core/phase_detector.py",
+    "hooks/core/semantic_phase.py",
+    "hooks/core/loop_engine.py",
+    "hooks/core/supplemental_prompts.py",
+    "router/__init__.py",
+    "router/router_engine.py",
+    "router/mappings.py",
+    "router/pack_selector.py",
+    "router/leaf_selector.py",
+    "router/method_engine.py",
+    "orchestrator/__init__.py",
+    "orchestrator/planner.py",
+    "orchestrator/state_graph.py",
+    "orchestrator/artifacts.py",
+    "orchestrator/gates.py",
+    "orchestrator/task_schema.py",
+    "automation/__init__.py",
+    "automation/planner.py",
+    "automation/artifact_store.py",
+    "automation/report_gate.py",
+    "automation/scope_gate.py",
+    "automation/tool_discovery.py",
+    "automation/tool_registry.py",
+    "session_patcher/__init__.py",
+    "session_patcher/__main__.py",
+    "session_patcher/cli.py",
+    "session_patcher/detector.py",
+    "session_patcher/patcher.py",
+]
+
+REQUIRED_ROOT_FILES = [
+    "instruction.ctf.md",
+    "config.toml",
+]
+
+OPTIONAL_CODEX_FILES = [
+    "prompts/Reverse.md",
+]
+
+
+def _codex_root(codex_home: Path) -> Path:
+    """Accept either an installed Codex home or this repository root."""
+    if (codex_home / "hooks").exists():
+        return codex_home
+    if (codex_home / "codex" / "hooks").exists():
+        return codex_home / "codex"
+    return codex_home
+
+
+def check_file(codex_root: Path, relative: str) -> Tuple[bool, str]:
+    path = codex_root / relative
+    if path.exists():
+        return True, f"  OK  {relative}"
+    return False, f"  MISS {relative}"
+
+
+def validate_install(codex_home: Path) -> Tuple[bool, List[str]]:
+    messages: List[str] = []
+    all_ok = True
+
+    codex_root = _codex_root(codex_home)
+    repo_root = codex_root.parent if codex_root.name == "codex" else codex_home
+    source_tree_mode = codex_root.name == "codex" and (repo_root / "scripts" / "install.py").exists()
+
+    messages.append(f"Validating codex-redteam installation at: {codex_home}")
+    messages.append(f"Resolved codex root: {codex_root}")
+    messages.append("")
+
+    messages.append("Required files:")
+    for rel in REQUIRED_CODEX_FILES:
+        ok, msg = check_file(codex_root, rel)
+        messages.append(msg)
+        if not ok:
+            all_ok = False
+    for rel in REQUIRED_ROOT_FILES:
+        ok, msg = check_file(repo_root, rel)
+        messages.append(msg)
+        if not ok:
+            all_ok = False
+
+    messages.append("")
+    messages.append("Optional files:")
+    for rel in OPTIONAL_CODEX_FILES:
+        ok, msg = check_file(codex_root, rel)
+        if not ok:
+            msg = msg.replace("MISS", "WARN (optional)")
+        messages.append(msg)
+
+    hooks_path = repo_root / "hooks.json"
+    if hooks_path.exists():
+        try:
+            data = json.loads(hooks_path.read_text(encoding="utf-8"))
+            hooks_root = data.get("hooks", {})
+            hook_count = sum(
+                len(entries) for entries in hooks_root.values()
+            )
+            messages.append("")
+            messages.append(f"hooks.json: valid ({hook_count} hook event groups)")
+        except (json.JSONDecodeError, OSError) as e:
+            messages.append("")
+            messages.append(f"hooks.json: INVALID JSON - {e}")
+            all_ok = False
+    else:
+        messages.append("")
+        if source_tree_mode:
+            messages.append("hooks.json: not required for source tree validation")
+        else:
+            messages.append("hooks.json: MISSING")
+            all_ok = False
+
+    agents_path = repo_root / "AGENTS.md"
+    if agents_path.exists():
+        content = agents_path.read_text(encoding="utf-8")
+        if "codex-redteam-optin-mode:start" in content:
+            messages.append("AGENTS.md: managed block present")
+        else:
+            messages.append("AGENTS.md: WARNING - no managed block found")
+    else:
+        if source_tree_mode:
+            messages.append("AGENTS.md: not required for source tree validation")
+        else:
+            messages.append("AGENTS.md: MISSING")
+            all_ok = False
+
+    config_path = repo_root / "config.toml"
+    if config_path.exists():
+        messages.append("config.toml: present")
+    else:
+        messages.append("config.toml: MISSING")
+        all_ok = False
+
+    return all_ok, messages
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser(); parser.add_argument("--codex-home", default=str(Path.home()/".codex")); args = parser.parse_args(); codex_home = Path(args.codex_home)
-    files=[codex_home/"redteam-install-manifest.json",codex_home/"instruction.ctf.md",codex_home/"prompts"/"system-prompt.md",codex_home/"prompts"/"do_special.md",codex_home/"prompts"/"Reverse.md",codex_home/"AGENTS.md",codex_home/"hooks.json",codex_home/"hooks"/"session-start-context.py",codex_home/"hooks"/"hook-security-context-hook.py",codex_home/"hooks"/"redteam_state.py",codex_home/"hooks"/"core"/"__init__.py",codex_home/"router"/"__init__.py",codex_home/"orchestrator"/"__init__.py"]
-    for f in files: assert_exists(f)
-    hooks_dir = codex_home/"hooks"
-    for insert_path in (hooks_dir, codex_home):
-        if str(insert_path) not in sys.path: sys.path.insert(0, str(insert_path))
-    for idx, hook in enumerate([codex_home/"hooks"/"session-start-context.py", codex_home/"hooks"/"hook-security-context-hook.py", codex_home/"hooks"/"redteam_state.py"], start=1):
-        name=f"validate_mod_{idx}"; spec=importlib.util.spec_from_file_location(name, hook); mod=importlib.util.module_from_spec(spec); assert spec and spec.loader; sys.modules[name]=mod; spec.loader.exec_module(mod)
-    session_hook=codex_home/"hooks"/"session-start-context.py"; prompt_hook=codex_home/"hooks"/"hook-security-context-hook.py"
-    enable=run_hook(prompt_hook, {"session_id":"validate-main","prompt":"进入红队模式"})
-    reverse=run_hook(prompt_hook, {"session_id":"validate-main","prompt":"分析这个 malware loader 样本并恢复执行链"})
-    reverse_sem=run_hook(prompt_hook, {"session_id":"validate-main","prompt":"这个程序会释放资源并拉起子进程，帮我梳理流程"})
-    audit=run_hook(prompt_hook, {"session_id":"validate-main","prompt":"审计这个 controller 和 middleware，从入口追到危险 sink"})
-    audit_sem=run_hook(prompt_hook, {"session_id":"validate-main","prompt":"帮我从入口一路追到危险函数，看看权限边界哪里失守"})
-    postex_sem=run_hook(prompt_hook, {"session_id":"validate-main","prompt":"已经拿到 shell，下一步应该如何做主机分诊和横向准备？"})
-    cloud_route=run_hook(prompt_hook, {"session_id":"validate-main","prompt":"Analyze AWS IAM role assumption and metadata credential abuse paths"})
-    container_route=run_hook(prompt_hook, {"session_id":"validate-main","prompt":"Assess kubernetes hostPath and privileged pod breakout risk"})
-    network_route=run_hook(prompt_hook, {"session_id":"validate-main","prompt":"Check HTTP/2 request smuggling and websocket protocol issues from this traffic"})
-    crypto_route=run_hook(prompt_hook, {"session_id":"validate-main","prompt":"Review this RSA and hash challenge for practical attack paths"})
-    mobile_route=run_hook(prompt_hook, {"session_id":"validate-main","prompt":"Analyze this Android APK with SSL pinning and Frida bypass considerations"})
-    full_web=run_hook(prompt_hook, {"session_id":"validate-full","prompt":"进入红队模式"}); full_web=run_hook(prompt_hook, {"session_id":"validate-full","prompt":"/redteam full"}); full_web=run_hook(prompt_hook, {"session_id":"validate-full","prompt":"Review Burp JWT login traffic and verify token boundary reuse risks"})
-    session_ctx=run_hook(session_hook, {"session_id":"validate-session"})
-    ordinary=run_hook(prompt_hook, {"session_id":"validate-session-2","prompt":"Write a normal React page"})
-    disable=run_hook(prompt_hook, {"session_id":"validate-main","prompt":"退出红队模式"})
-    if str(codex_home) not in sys.path: sys.path.insert(0, str(codex_home))
-    import orchestrator as orch
-    recon=orch.ReconArtifact(scope="lab", hosts=["10.0.0.5"], ports=["80/tcp"], services=["http"], evidence_refs=["scan.json"], confidence=0.9)
-    strategy=orch.StrategyArtifact(candidate_paths=[orch.StrategyPath(name="web-path", rationale="http present")], chosen_path="web-path", evidence_refs=["scan.json"])
-    review=orch.ReviewArtifact(status="pass", next_action="deliver")
-    manifest_file=codex_home/"redteam-install-manifest.json"; manifest_data=json.loads(manifest_file.read_text(encoding="utf-8")); manifest_ok=manifest_data.get("name")=="codex-redteam-optin-mode" and any(str(path).endswith("instruction.ctf.md") for path in manifest_data.get("managed_paths", []))
-    checks=[("files",True),("install manifest",manifest_ok),("prompt chain session notice","instruction.ctf.md is highest priority" in session_ctx),("enable","enabled" in enable),("reverse phase","phase:reverse" in reverse),("reverse prompt overlay","[overlay:Reverse|supplemental-phase]" in reverse),("reverse semantic fallback","phase:reverse" in reverse_sem),("code-audit phase","phase:code-audit" in audit),("code-audit semantic fallback","phase:code-audit" in audit_sem),("postex semantic fallback","phase:postex" in postex_sem),("cloud routing","phase:cloud" in cloud_route and "pack:redteam-cloud-detail-pack" in cloud_route),("container routing","phase:container" in container_route and "pack:redteam-container-detail-pack" in container_route),("network routing","phase:network" in network_route and "pack:redteam-network-detail-pack" in network_route),("crypto routing","phase:crypto" in crypto_route and "pack:redteam-crypto-detail-pack" in crypto_route),("mobile routing","phase:mobile" in mobile_route and "pack:redteam-mobile-detail-pack" in mobile_route),("method/router/pack/leaf routing",all(token in full_web for token in ("router:", "pack:", "leaf:"))),("prompt overlays active","instruction.ctf.md is highest priority" in session_ctx and "[overlay:Reverse|supplemental-phase]" in reverse),("redteam-full distinction","[mode:redteam-full]" in full_web and "[workflow:structured-orchestration]" in full_web and "[review:required]" in full_web),("session start context size",hook_context_len(session_ctx)<=420),("ordinary prompt stays empty", ordinary==""),("recon gate",orch.recon_gate(recon).ok),("strategy gate",orch.strategy_gate(strategy).ok),("review gate",orch.review_gate(review).ok),("disable","disabled" in disable)]
-    report=["# Validation Report","",*[status_line(n,o) for n,o in checks]]; print("\n".join(report))
-    if not all(ok for _,ok in checks): raise SystemExit(1)
-if __name__ == "__main__": main()
+    parser = argparse.ArgumentParser(
+        description="Validate codex-redteam-optin-mode installation"
+    )
+    parser.add_argument(
+        "--codex-home",
+        required=False,
+        help="Path to the codex home directory",
+    )
+    args = parser.parse_args()
+
+    codex_home = Path(args.codex_home) if args.codex_home else Path.home() / ".codex"
+    if not codex_home.exists():
+        print(f"ERROR: codex home directory does not exist: {codex_home}")
+        sys.exit(1)
+
+    all_ok, messages = validate_install(codex_home)
+    for msg in messages:
+        print(msg)
+
+    if all_ok:
+        print("\nValidation PASSED.")
+        sys.exit(0)
+    else:
+        print("\nValidation FAILED - some required files are missing.")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

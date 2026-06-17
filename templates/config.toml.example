@@ -1,1 +1,19 @@
-# Codex red-team profile\nmodel_instructions_file = './instruction.ctf.md'\n\n[features]\nhooks = true\n
+# Codex red-team profile
+model_instructions_file = './instruction.ctf.md'
+
+[features]
+hooks = true
+automation = true
+
+[automation]
+mode = "assisted"
+tool_priority = [
+  "WebFetch",
+  "Browser MCP",
+  "IDA MCP",
+  "JADX MCP",
+  "Claude code+Codex",
+]
+mcp_inventory_files = []
+require_scope_for_network = true
+allow_restricted_actions = false

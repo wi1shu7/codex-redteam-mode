@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from redteam_state import RedTeamState
 
@@ -9,6 +9,8 @@ def build_route_envelope(state: RedTeamState) -> str:
         "[security:redteam]",
         f"[mode:{state.mode}]",
         f"[phase:{state.phase}]",
+        f"[stage:{state.workflow_phase or 'recon'}]",
+        f"[objective:{state.objective}]",
     ]
     if state.subphase:
         lines.append(f"[subphase:{state.subphase}]")
@@ -20,16 +22,26 @@ def build_route_envelope(state: RedTeamState) -> str:
         lines.append(f"[pack:{state.skill_pack}]")
     if state.leaf_skill:
         lines.append(f"[leaf:{state.leaf_skill}]")
-    lines.append(f"[evidence:{state.evidence_level}]")
-    lines.append(f"[opsec:{state.opsec_level}]")
-    lines.append(f"[path:{selected}]")
+    lines.extend(
+        [
+            f"[evidence:{state.evidence_level}]",
+            f"[opsec:{state.opsec_level}]",
+            f"[path:{selected}]",
+            f"[drift:{state.drift_level}]",
+            f"[health:{state.loop_health}]",
+        ]
+    )
 
     if state.mode == "redteam-full":
         lines.append("[workflow:structured-orchestration]")
         lines.append("[review:required]")
-        lines.append("Use gates before delivery. Prefer the selected detailed pack, keep one selected path, attach evidence refs, and review before expansion.")
+        lines.append(
+            "Use gates before delivery. Prefer the selected detailed pack, keep one selected path, attach evidence refs, and review before expansion."
+        )
     else:
         review_flag = "required" if state.review_required else "optional"
         lines.append(f"[review:{review_flag}]")
-        lines.append("Prefer the selected detailed pack, prove one path before expansion, distinguish facts from assumptions, and end with one concrete next step.")
+        lines.append(
+            "Prefer the selected detailed pack, prove one path before expansion, distinguish facts from assumptions, and end with one concrete next step."
+        )
     return "\n".join(lines)
