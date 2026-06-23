@@ -1,6 +1,6 @@
 from __future__ import annotations
 import re
-from .mappings import PHASE_DEFAULT_METHOD, PHASE_ESCALATION_METHOD
+from router.mappings import PHASE_DEFAULT_METHOD, PHASE_ESCALATION_METHOD
 
 METHOD_HINTS = [
     ("workflows", [r"\bworkflow\b", r"\bplaybook\b", r"\bchain\b", "\u5de5\u4f5c\u6d41", "\u6d41\u7a0b", "\u591a\u9636\u6bb5"]),

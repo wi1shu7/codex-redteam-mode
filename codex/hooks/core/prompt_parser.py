@@ -93,6 +93,8 @@ def extract_prompt(payload: Any) -> str:
             if not isinstance(item, dict):
                 continue
             text = _extract_text_block(item.get("content"))
+            if "role" in item:
+                continue
             if text.strip():
                 return text
     return ""

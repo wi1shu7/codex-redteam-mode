@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 
 from orchestrator import ReconArtifact, StrategyArtifact, StrategyPath, recon_gate, strategy_gate
-from automation import create_automation_plan
+from automation import build_quick_card, create_automation_plan, should_refresh_quick_card
 from redteam_state import RedTeamState
 from router import select_leaf_skill, select_method, select_router, select_skill_pack, select_subphase
 
@@ -216,11 +216,12 @@ def process_turn(
     elif not working.objective:
         working.objective = prompt.strip()
 
-    if _is_general_prompt(prompt) and working.phase != "general":
+    preserve_previous_phase = intent.intent_type == "continue" and _is_general_prompt(prompt)
+    if preserve_previous_phase and working.phase != "general":
         phase = working.phase
     else:
         phase = detect_phase(prompt)
-        if phase == "general" and working.phase != "general":
+        if phase == "general" and preserve_previous_phase and working.phase != "general":
             phase = working.phase
     working.phase = phase
     working.subphase = select_subphase(prompt, phase)
@@ -350,8 +351,20 @@ def process_turn(
         f"[task:{working.current_task_id}]",
         f"[loop:{loop_decision.action}]",
         f"[loop-reason:{loop_decision.reason}]",
+        f"[loop-trigger:{loop_decision.trigger}]",
+        f"[feedback-gate:{loop_decision.feedback_gate}]",
+        f"[exit-condition:{loop_decision.exit_condition}]",
         f"[next-step:{loop_decision.next_step}]",
     ]
+    if should_refresh_quick_card(loop_decision, loop_iteration=working.loop_iteration):
+        brief_lines.append(
+            build_quick_card(
+                objective=working.objective,
+                selected_path=working.selected_path,
+                decision=loop_decision,
+                recent_artifacts=tuple(item.get("kind", "") for item in memory.get("recent_artifacts", []) if isinstance(item, dict)),
+            )
+        )
     brief_lines.extend(_build_automation_summary(working.objective, working.phase, prompt))
     for check in selection.taskbook.acceptance_checks[:2]:
         brief_lines.append(f"[check] {check}")

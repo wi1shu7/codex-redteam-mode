@@ -18,8 +18,8 @@ PREFERRED_TOOL_BY_CAPABILITY: dict[str, str] = {
     "protocol_analysis": "IDA MCP",
     "apk_decompile": "JADX MCP",
     "android_static_analysis": "JADX MCP",
-    "code_generation": "Claude code+Codex",
-    "ai_coding": "Claude code+Codex",
+    "code_generation": "Current AI Agent",
+    "ai_coding": "Current AI Agent",
 }
 
 CAPABILITY_ALIASES: dict[str, set[str]] = {
@@ -48,6 +48,10 @@ NAME_CAPABILITY_HINTS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("apk", ("apk_decompile", "android_static_analysis")),
     ("codex", ("code_generation", "ai_coding")),
     ("claude", ("code_generation", "ai_coding")),
+    ("current-ai", ("code_generation", "ai_coding")),
+    ("ai-agent", ("code_generation", "ai_coding")),
+    ("cursor", ("code_generation", "ai_coding")),
+    ("qwen", ("code_generation", "ai_coding")),
 )
 
 

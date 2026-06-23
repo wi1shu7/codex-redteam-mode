@@ -61,9 +61,10 @@ def create_automation_plan(
     phase: str,
     tool_config_paths: Sequence[str | Path] | None = None,
     registry: ToolRegistry | None = None,
+    required_capabilities: Sequence[str] | None = None,
 ) -> AutomationPlan:
     inventory = discover_local_tools(tool_config_paths)
-    required = infer_required_capabilities(objective, phase)
+    required = tuple(dict.fromkeys(required_capabilities or infer_required_capabilities(objective, phase)))
     selected = select_tools_for_task(required, inventory)
     registry = registry or ToolRegistry()
     steps: list[AutomationStep] = []

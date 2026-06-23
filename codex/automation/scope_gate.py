@@ -55,6 +55,8 @@ class ScopeGate:
         target = self._target(args)
         if spec.requires_scope and not target:
             return ScopeDecision(False, "missing_target")
+        if spec.requires_scope and target and not self.scope.allow_cross_system and not self.scope.in_scope:
+            return ScopeDecision(False, "missing_scope")
         if not self.scope.allow_cross_system and target:
             for blocked in self.scope.out_of_scope:
                 if self._matches_scope_entry(target, blocked):
