@@ -20,6 +20,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `SessionStart` now preserves the existing mode for `resume` and `compact` sources, while `startup`, `clear`, missing, and unknown sources reset safely to normal.
 - Hook JSON output is now ASCII-safe, preventing Windows GBK/CP936 stdout encoding from corrupting the UTF-8 hook protocol or Chinese context.
 - Installer manifests now record the exact `config.toml` values and tables added by the installer. Uninstall removes only unchanged installer-owned values before deleting `instruction.ctf.md`; legacy manifests preserve the file when configuration ownership cannot be proven.
+- Resumed and compacted red-team sessions now load only stable global prompt files. Phase-specific prompts such as `Reverse.md` remain per-turn overlays and are injected only after the current prompt is routed to that phase.
 
 ### Changed
 

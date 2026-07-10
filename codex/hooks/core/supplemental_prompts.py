@@ -9,12 +9,14 @@ from __future__ import annotations
 from pathlib import Path
 from typing import List
 
+SESSION_PROMPT_FILES = ("system-prompt.md", "do_special.md")
+
 
 def build_prompt_chain_notice(codex_dir: Path, mode: str = "normal") -> str:
-    """Build a session-start notice from codex/prompts/*.md files.
+    """Build a session-start notice from stable global prompt files.
 
-    Called once at session initialization. Supplemental prompt files are
-    red-team overlays and must not pollute normal sessions.
+    Phase-specific prompt files are selected per turn by build_prompt_overlay
+    and must not be injected before the current prompt's phase is known.
     """
     if mode not in {"redteam-light", "redteam-full"}:
         return ""
@@ -24,16 +26,9 @@ def build_prompt_chain_notice(codex_dir: Path, mode: str = "normal") -> str:
         return ""
 
     parts: List[str] = []
-    # system-prompt.md always first if present
-    system_prompt = prompts_dir / "system-prompt.md"
-    if system_prompt.is_file():
-        content = system_prompt.read_text(encoding="utf-8").strip()
-        if content:
-            parts.append(content)
-
-    # Then remaining .md files alphabetically (excluding system-prompt)
-    for md_file in sorted(prompts_dir.glob("*.md")):
-        if md_file.name == "system-prompt.md":
+    for name in SESSION_PROMPT_FILES:
+        md_file = prompts_dir / name
+        if not md_file.is_file():
             continue
         content = md_file.read_text(encoding="utf-8").strip()
         if content:

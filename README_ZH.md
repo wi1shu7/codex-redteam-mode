@@ -147,6 +147,7 @@ python scripts/install.py --project-home /path/to/project --agents-home /path/to
 - 自定义 `--agents-home` 未启用运行时优先级时安装器会给出警告；验证器会报告运行时 skill 根目录是否与安装目录一致
 - `SessionStart` 和 `UserPromptSubmit` 只输出 Codex schema 支持的 wire 字段；路由 phase 保留在 `additionalContext` 中，不再作为未知字段序列化
 - `SessionStart(source=resume|compact)` 保留已有会话模式，`startup` 与 `clear` 则重置为 normal
+- 恢复或压缩后的红队会话只加载 `system-prompt.md` 和 `do_special.md`；`Reverse.md` 等阶段提示会在每轮 phase 检测完成后按需注入
 - hook stdout 使用 ASCII-safe JSON，避免 Windows 传统代码页破坏 UTF-8 JSON 协议或中文上下文
 - 相对安装参数以安装命令的工作目录为基准解析，生成的 hooks 和 manifest 字段均使用绝对路径
 - `copy_tree` 整目录替换托管目录（`router/`、`orchestrator/` 等），skill 目录仅复制 `SKILL.md`

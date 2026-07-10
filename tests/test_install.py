@@ -36,7 +36,7 @@ if str(HOOKS_PATH) not in sys.path:
     sys.path.insert(0, str(HOOKS_PATH))
 if str(CODEX_PATH) not in sys.path:
     sys.path.insert(0, str(CODEX_PATH))
-from core import controller, emitter, prompt_parser, refusal_backstop, runtime_paths, skill_card
+from core import controller, emitter, prompt_parser, refusal_backstop, runtime_paths, skill_card, supplemental_prompts
 from session_patcher import patcher
 
 
@@ -191,6 +191,9 @@ def test_session_start_preserves_mode_on_resume_and_compact(tmp_path: Path) -> N
         )
         started_context = json.loads(started.stdout)["hookSpecificOutput"]["additionalContext"]
         assert "Session mode restored (redteam-light)" in started_context
+        assert "CTF core contract" in started_context
+        assert "Supplemental routing note" in started_context
+        assert "Reverse-engineering supplemental overlay" not in started_context
         assert json.loads(state_path.read_text(encoding="utf-8"))["mode"] == "redteam-light"
 
         routed = _run_hook_script(
@@ -201,6 +204,7 @@ def test_session_start_preserves_mode_on_resume_and_compact(tmp_path: Path) -> N
         routed_context = json.loads(routed.stdout)["hookSpecificOutput"]["additionalContext"]
         assert "[mode:redteam-light]" in routed_context
         assert "[router:" in routed_context
+        assert "Reverse-engineering supplemental overlay" not in routed_context
 
     _run_hook_script(
         SESSION_START_HOOK,
@@ -214,6 +218,22 @@ def test_session_start_preserves_mode_on_resume_and_compact(tmp_path: Path) -> N
         env,
     )
     assert after_clear.stdout == ""
+
+
+def test_session_prompt_notice_excludes_phase_specific_prompts() -> None:
+    notice = supplemental_prompts.build_prompt_chain_notice(CODEX_PATH, mode="redteam-light")
+
+    assert "CTF core contract" in notice
+    assert "Supplemental routing note" in notice
+    assert "Reverse-engineering supplemental overlay" not in notice
+
+
+def test_reverse_prompt_overlay_is_loaded_only_for_reverse_phase() -> None:
+    reverse = supplemental_prompts.build_prompt_overlay(CODEX_PATH, "reverse")
+    web = supplemental_prompts.build_prompt_overlay(CODEX_PATH, "web")
+
+    assert "Reverse-engineering supplemental overlay" in reverse
+    assert "Reverse-engineering supplemental overlay" not in web
 
 
 def test_merge_config_preserves_user_sections(tmp_path: Path) -> None:

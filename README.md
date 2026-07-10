@@ -146,6 +146,7 @@ On each run, it reads the previous manifest, removes only project-managed files 
 - Custom `--agents-home` installs warn when runtime priority is not enabled, and validation reports when the runtime-selected skill root differs from the installed root
 - `SessionStart` and `UserPromptSubmit` output only Codex-supported wire fields; route phase remains inside `additionalContext` instead of being serialized as an unknown field
 - `SessionStart(source=resume|compact)` preserves the existing session mode, while `startup` and `clear` reset to normal
+- Resumed and compacted red-team sessions load only `system-prompt.md` and `do_special.md`; phase-specific files such as `Reverse.md` are selected per turn after phase detection
 - Hook JSON is ASCII-safe on stdout, so Windows legacy code pages cannot corrupt the UTF-8 JSON protocol or Chinese context
 - Relative install arguments are resolved against the install command's working directory, and generated hooks and manifest fields use absolute paths
 - `copy_tree` replaces managed directories (`router/`, `orchestrator/`, etc.) wholesale; skill directories copy only `SKILL.md`
