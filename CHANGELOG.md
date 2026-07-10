@@ -4,37 +4,17 @@ All notable changes to the Codex Red Team Opt-In Mode project.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [1.1.2] - 2026-07-10
-
-### Added
-
-- Added `requirements.txt` with the `tomlkit` runtime dependency.
-- Added installer options `--log-root PATH` and `--enable-custom-skill-dirs`.
-- Added manifest fields for `skills_paths`, `custom_skill_dirs_enabled`, and `log_root`.
+## [1.1.3] - 2026-07-10
 
 ### Fixed
 
-- Switched `config.toml` merging to `tomlkit` round-trip editing so array tables such as `[[skills.config]]` no longer receive `[automation]` keys.
-- Project installs now write the managed AGENTS block to `<project>/AGENTS.md` and safely migrate old `<project>/.codex/AGENTS.md` managed blocks.
-- Runtime skill-card lookup now uses project `.agents/skills`, user `.agents/skills`, and manifest-recorded paths instead of `AGENTS_HOME`.
-- Automation decision logs now use manifest `log_root` and default to `.codex/logs/codex-redteam`.
-- Session backstop lookup now uses hook `transcript_path` when available and falls back through `CODEX_HOME/sessions` to `~/.codex/sessions`.
-- Documentation now uses the real pytest test entrypoint.
+- Runtime manifest discovery now checks the current Codex Home first, so custom `--codex-home` installs work even when hooks do not inherit `CODEX_HOME`.
+- Installer `config.toml` merging now preflights TOML parsing before cleanup or file copies, preventing partial installs when an existing config is invalid.
 
-## [1.1.1] - 2026-07-09
+### Changed
 
-### Added
-
-- Added `--project-home PATH` for project-level installs. It writes Codex runtime/config files to `<project>/.codex` and, by default, skill cards to `<project>/.agents/skills`.
-- `--project-home` can be combined with `--agents-home PATH` to place skill cards in a custom agents directory while keeping project Codex config under `<project>/.codex`.
-- Documented the Python 3.11+ requirement because the installer uses the standard-library `tomllib` parser.
-
-### Fixed
-
-- Merged `config.toml` structurally instead of overwriting user-owned config, preserving existing MCP servers, model providers, project trust entries, automation mode, and other user settings.
-- Protected `config.toml` during upgrade cleanup by tracking it as a merged file instead of a managed disposable path.
-- Created timestamped `config.toml.YYYYMMDDHHMMSS.bak` backups before changing an existing config file. Dry-run, no-op merges, and invalid TOML do not create backups or modify files.
-- Accepted UTF-8 BOM-prefixed existing config files during merge.
+- Clarified `--codex-home` as a Codex Home/profile-level install whose `AGENTS.md` is global guidance, while `--project-home` writes project-level `AGENTS.md`.
+- Documented manifest lookup and upgrade cleanup as relative to the selected Codex Home instead of hard-coding `~/.codex`.
 
 ## [1.0.0] - 2026-06-28
 
@@ -156,8 +136,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Managed incremental installer for Python and PowerShell.
 - Reference method layer and technology routing layer from three external skill repositories.
 
-[1.1.2]: https://github.com/chAng-L19/codex-redteam-mode/releases/tag/v1.1.2
-[1.1.1]: https://github.com/chAng-L19/codex-redteam-mode/releases/tag/v1.1.1
+[1.1.3]: https://github.com/chAng-L19/codex-redteam-mode/releases/tag/v1.1.3
 [1.0.0]: https://github.com/chAng-L19/codex-redteam-mode/releases/tag/v1.0.0
 [0.6.0]: https://github.com/chAng-L19/codex-redteam-mode/releases/tag/v0.6.0
 [0.5.0]: https://github.com/chAng-L19/codex-redteam-mode/releases/tag/v0.5.0

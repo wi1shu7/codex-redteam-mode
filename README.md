@@ -2,7 +2,7 @@
 
 [中文说明](./README_ZH.md)
 
-**Current release:** v1.1.2
+**Current release:** v1.1.3
 
 > Normal by default. Red-team mode is opt-in; once enabled, automation starts automatically by default.
 
@@ -82,9 +82,9 @@ python scripts/install.py
 
 | Option | Description |
 |--------|-------------|
-| `--project-home PATH` | Project-level install root. Writes Codex files to `PATH/.codex` and skills to `PATH/.agents/skills` unless `--agents-home` is set |
+| `--project-home PATH` | Project-level install root. Writes Codex files to `PATH/.codex`, skills to `PATH/.agents/skills` unless `--agents-home` is set, and project guidance to `PATH/AGENTS.md` |
 | `--agents-home PATH` | Custom agents directory for skill cards (default: `~/.agents`, or `PATH/.agents` with `--project-home`) |
-| `--codex-home PATH` | Compatibility option for a custom Codex home directory (default: `~/.codex`). Do not combine with `--project-home` |
+| `--codex-home PATH` | Custom Codex Home/profile directory (default: `~/.codex`). Writes `PATH/AGENTS.md` as global guidance; use `--project-home` for project guidance. Do not combine with `--project-home` |
 | `--log-root PATH` | Custom automation log root recorded in the install manifest |
 | `--enable-custom-skill-dirs` | Allow runtime skill-card lookup to use manifest-recorded custom skill directories directly |
 | `--dry-run` | Preview all operations without writing any files |
@@ -94,10 +94,10 @@ python scripts/install.py
 # Preview before install
 python scripts/install.py --dry-run
 
-# Custom install location
+# Custom Codex Home/profile install
 python scripts/install.py --codex-home /opt/codex/home
 
-# Project-level install
+# Project-level install, including project AGENTS.md
 python scripts/install.py --project-home /path/to/project
 
 # Project-level install with shared skills directory
@@ -110,18 +110,21 @@ python scripts/install.py --project-home /path/to/project --log-root /path/to/lo
 python scripts/install.py --uninstall
 ```
 
+Use `--project-home /path/to/project` for project-level installs. Do not use `--codex-home /path/to/project/.codex` as a substitute: that installs into a Codex Home/profile, so `AGENTS.md` is treated as global guidance for that profile rather than as project-root guidance.
+
 ### What the Installer Does
 
-1. **Upgrade cleanup** — reads the manifest from the previous install (`~/.codex/redteam-install-manifest.json`), removes all old tracked paths, plus known legacy remnants (`legacy-redteam-hook.py`, `red-team-command-doctrine-old`)
-2. **Core files** — copies `instruction.ctf.md` and merges `config.toml` into the selected Codex home (`~/.codex/` or `<project>/.codex/`)
-3. **Hooks** — deploys `session-start-context.py`, `hook-security-context-hook.py`, `redteam_state.py`, and `core/` to `~/.codex/hooks/`
-4. **Subsystems** — deploys `router/`, `orchestrator/`, `automation/`, and `session_patcher/` to `~/.codex/`
-5. **Skill packs** — deploys all 35 SKILL.md domain cards from `agents/skills/` to the selected agents home (only `SKILL.md` is copied per skill directory)
-6. **Seed prompts** — copies prompt files to `~/.codex/prompts/` (skips existing)
-7. **Merge hooks.json** — strips old managed hooks, then injects the current `SessionStart` and `UserPromptSubmit` hooks (preserves user-defined hooks)
-8. **Merge AGENTS.md** — injects or updates a managed block (`<!-- codex-redteam-optin-mode:start -->`) into `~/.codex/AGENTS.md`, or `<project>/AGENTS.md` with `--project-home` (preserves user content outside the block)
-9. **Write manifest** — records managed paths, merged files, skill-card paths, custom skill-dir mode, and automation log root to `redteam-install-manifest.json`
-10. **Validate** — runs `scripts/validate.py` to verify every subsystem file is in place
+1. **Config preflight** — parses and plans the `config.toml` merge before copying or cleaning any files, so invalid existing TOML leaves the install untouched
+2. **Upgrade cleanup** — reads the manifest from the selected Codex Home (`<codex-home>/redteam-install-manifest.json`), removes all old tracked paths, plus known legacy remnants (`legacy-redteam-hook.py`, `red-team-command-doctrine-old`)
+3. **Core files** — copies `instruction.ctf.md` and merges `config.toml` into the selected Codex Home (`~/.codex/`, custom `--codex-home`, or `<project>/.codex/`)
+4. **Hooks** — deploys `session-start-context.py`, `hook-security-context-hook.py`, `redteam_state.py`, and `core/` to the selected Codex Home's `hooks/`
+5. **Subsystems** — deploys `router/`, `orchestrator/`, `automation/`, and `session_patcher/` to the selected Codex Home
+6. **Skill packs** — deploys all 35 SKILL.md domain cards from `agents/skills/` to the selected agents home (only `SKILL.md` is copied per skill directory)
+7. **Seed prompts** — copies prompt files to the selected Codex Home's `prompts/` directory (skips existing)
+8. **Merge hooks.json** — strips old managed hooks, then injects the current `SessionStart` and `UserPromptSubmit` hooks (preserves user-defined hooks)
+9. **Merge AGENTS.md** — injects or updates a managed block (`<!-- codex-redteam-optin-mode:start -->`) into the selected Codex Home's `AGENTS.md` as global guidance, or `<project>/AGENTS.md` with `--project-home` as project guidance (preserves user content outside the block)
+10. **Write manifest** — records managed paths, merged files, skill-card paths, custom skill-dir mode, and automation log root to `redteam-install-manifest.json`
+11. **Validate** — runs `scripts/validate.py` to verify every subsystem file is in place
 
 ### Upgrade & Idempotency
 
@@ -131,6 +134,7 @@ On each run, it reads the previous manifest, removes only project-managed files 
 - Version upgrades are clean without touching user-owned files
 - `config.toml` is merged instead of overwritten; existing user settings are preserved, and changed existing configs are backed up as `config.toml.YYYYMMDDHHMMSS.bak`
 - `config.toml` merging uses `tomlkit` so array tables such as `[[skills.config]]` do not receive keys meant for `[automation]`
+- Invalid existing `config.toml` fails during preflight before files are copied or previous manifest paths are cleaned
 - `copy_tree` replaces managed directories (`router/`, `orchestrator/`, etc.) wholesale; skill directories copy only `SKILL.md`
 - `AGENTS.md`, `hooks.json`, and `config.toml` are never deleted by upgrade cleanup — they use merge logic so user customizations survive
 - Project installs place the managed AGENTS block in `<project>/AGENTS.md`; old `<project>/.codex/AGENTS.md` managed blocks are migrated safely
