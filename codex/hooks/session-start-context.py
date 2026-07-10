@@ -11,7 +11,7 @@ for candidate in (HOOKS_DIR, CODEX_DIR):
     if candidate_str not in sys.path:
         sys.path.insert(0, candidate_str)
 
-from core import build_prompt_chain_notice, emit_hook_json, extract_session_id, reset_runtime_state
+from core import build_prompt_chain_notice, emit_hook_json, extract_session_id, extract_transcript_path, reset_runtime_state
 from core.context_prepoison import build_prepoisoned_context
 from core.prompt_parser import decode_stdin, load_payload
 from core.refusal_backstop import session_start_backstop_messages
@@ -20,9 +20,12 @@ from core.refusal_backstop import session_start_backstop_messages
 def main() -> None:
     raw = decode_stdin(sys.stdin.buffer.read())
     session_id = None
+    transcript_path = None
     if raw.strip():
         try:
-            session_id = extract_session_id(load_payload(raw))
+            payload = load_payload(raw)
+            session_id = extract_session_id(payload)
+            transcript_path = extract_transcript_path(payload)
         except Exception:
             session_id = None
 
@@ -39,7 +42,7 @@ def main() -> None:
     prepoison = build_prepoisoned_context()
     context = f"{context}\n{prepoison}"
 
-    backstop = session_start_backstop_messages(session_id)
+    backstop = session_start_backstop_messages(session_id, transcript_path=transcript_path)
     if backstop:
         context = f"{context}\n" + "\n".join(backstop)
     print(emit_hook_json("SessionStart", context))

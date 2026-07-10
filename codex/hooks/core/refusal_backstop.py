@@ -4,18 +4,35 @@ import os
 from pathlib import Path
 from typing import Any
 
-from session_patcher import RefusalDetector, backup_session, clean_session, list_session_files, save_session
+from session_patcher import RefusalDetector, backup_session, clean_session, default_session_dir, list_session_files, save_session
 
 
 TRUTHY = {"1", "true", "yes", "on", "patch"}
 DETECT_MODES = {"1", "true", "yes", "on", "detect", "patch"}
 
 
-def _session_dir() -> Path:
-    configured = os.environ.get("CODEX_REDTEAM_SESSION_DIR")
-    if configured:
-        return Path(configured).expanduser()
-    return Path.home() / ".codex" / "sessions"
+def _transcript_file(transcript_path: str | None) -> Path | None:
+    if not transcript_path:
+        return None
+    # Codex hook metadata provides transcript_path. Official docs warn that the
+    # transcript file format is not stable, so this project only uses the path
+    # to locate the active session directory/current file, not to define new
+    # parsing behavior.
+    return Path(transcript_path).expanduser()
+
+
+def _session_dir(transcript_path: str | None = None) -> Path:
+    transcript = _transcript_file(transcript_path)
+    if transcript is not None:
+        return transcript.parent
+    return default_session_dir()
+
+
+def _same_path(left: Path, right: Path) -> bool:
+    try:
+        return left.resolve() == right.resolve()
+    except OSError:
+        return left == right
 
 
 def _extract_text_block(content: Any) -> str:
@@ -78,8 +95,9 @@ def build_recent_refusal_overlay() -> str:
     )
 
 
-def _select_previous_session(current_session_id: str | None) -> Path | None:
-    session_dir = _session_dir()
+def _select_previous_session(current_session_id: str | None, transcript_path: str | None = None) -> Path | None:
+    current_transcript = _transcript_file(transcript_path)
+    session_dir = _session_dir(transcript_path)
     if not session_dir.exists():
         return None
     all_files = list_session_files(str(session_dir))
@@ -87,7 +105,12 @@ def _select_previous_session(current_session_id: str | None) -> Path | None:
         return None
     # Find the current session's file, then pick the one immediately after it (older by mtime)
     current_idx = -1
-    if current_session_id:
+    if current_transcript is not None:
+        for idx, f in enumerate(all_files):
+            if _same_path(f, current_transcript):
+                current_idx = idx
+                break
+    if current_idx < 0 and current_session_id:
         for idx, f in enumerate(all_files):
             if current_session_id in f.stem:
                 current_idx = idx
@@ -96,14 +119,16 @@ def _select_previous_session(current_session_id: str | None) -> Path | None:
         return all_files[current_idx + 1]
     # Fallback: first file that isn't the current session
     for candidate in all_files:
+        if current_transcript is not None and _same_path(candidate, current_transcript):
+            continue
         if current_session_id and current_session_id in candidate.name:
             continue
         return candidate
     return None
 
 
-def detect_previous_session_refusal(current_session_id: str | None) -> list[str]:
-    target = _select_previous_session(current_session_id)
+def detect_previous_session_refusal(current_session_id: str | None, transcript_path: str | None = None) -> list[str]:
+    target = _select_previous_session(current_session_id, transcript_path)
     if target is None:
         return []
     _, modified, changes = clean_session(
@@ -122,8 +147,8 @@ def detect_previous_session_refusal(current_session_id: str | None) -> list[str]
     ]
 
 
-def auto_patch_previous_session(current_session_id: str | None) -> list[str]:
-    target = _select_previous_session(current_session_id)
+def auto_patch_previous_session(current_session_id: str | None, transcript_path: str | None = None) -> list[str]:
+    target = _select_previous_session(current_session_id, transcript_path)
     if target is None:
         return []
     cleaned, modified, changes = clean_session(
@@ -149,11 +174,11 @@ def auto_patch_previous_session(current_session_id: str | None) -> list[str]:
     return [f"[backstop:auto-patch] {target.name}: {detail}. Backup: {backup_path}"]
 
 
-def session_start_backstop_messages(current_session_id: str | None) -> list[str]:
+def session_start_backstop_messages(current_session_id: str | None, transcript_path: str | None = None) -> list[str]:
     mode = os.environ.get("CODEX_REDTEAM_BACKSTOP_MODE", "").strip().casefold()
     auto_patch = os.environ.get("CODEX_REDTEAM_AUTO_PATCH", "").strip().casefold() in TRUTHY
     if auto_patch or mode == "patch":
-        return auto_patch_previous_session(current_session_id)
+        return auto_patch_previous_session(current_session_id, transcript_path)
     if mode in DETECT_MODES:
-        return detect_previous_session_refusal(current_session_id)
+        return detect_previous_session_refusal(current_session_id, transcript_path)
     return []

@@ -36,6 +36,10 @@ SESSION_ID_KEYS = (
     "chatId",
     "id",
 )
+TRANSCRIPT_PATH_KEYS = (
+    "transcript_path",
+    "transcriptPath",
+)
 
 
 def decode_stdin(data: bytes) -> str:
@@ -116,6 +120,27 @@ def extract_session_id(payload: Any) -> Optional[str]:
     if isinstance(payload, list):
         for item in payload:
             found = extract_session_id(item)
+            if found:
+                return found
+    return None
+
+
+def extract_transcript_path(payload: Any) -> Optional[str]:
+    if isinstance(payload, str):
+        return None
+    if isinstance(payload, dict):
+        for key in TRANSCRIPT_PATH_KEYS:
+            value = payload.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        for key in ("context", "session", "thread", "conversation", "metadata", "_meta", "meta"):
+            nested = payload.get(key)
+            found = extract_transcript_path(nested)
+            if found:
+                return found
+    if isinstance(payload, list):
+        for item in payload:
+            found = extract_transcript_path(item)
             if found:
                 return found
     return None

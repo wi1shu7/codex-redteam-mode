@@ -14,6 +14,7 @@ from tomlkit.exceptions import ParseError as TomlParseError
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 INSTALL_PATH = REPO_ROOT / "scripts" / "install.py"
+CODEX_PATH = REPO_ROOT / "codex"
 HOOKS_PATH = REPO_ROOT / "codex" / "hooks"
 
 spec = importlib.util.spec_from_file_location("install_script", INSTALL_PATH)
@@ -24,7 +25,10 @@ spec.loader.exec_module(install)
 
 if str(HOOKS_PATH) not in sys.path:
     sys.path.insert(0, str(HOOKS_PATH))
-from core import runtime_paths, skill_card
+if str(CODEX_PATH) not in sys.path:
+    sys.path.insert(0, str(CODEX_PATH))
+from core import prompt_parser, refusal_backstop, runtime_paths, skill_card
+from session_patcher import patcher
 
 
 def _write_skill(skills_root: Path, name: str = "redteam-demo") -> Path:
@@ -467,6 +471,42 @@ def test_runtime_log_root_falls_back_to_user_codex_logs(tmp_path: Path, monkeypa
     resolved = runtime_paths.resolve_log_root(project / ".codex")
 
     assert resolved == fake_home / ".codex" / "logs" / "codex-redteam"
+
+
+def test_extract_transcript_path_from_hook_payload() -> None:
+    payload = {"session": {"transcript_path": "C:/tmp/session.jsonl"}}
+
+    assert prompt_parser.extract_transcript_path(payload) == "C:/tmp/session.jsonl"
+
+
+def test_refusal_backstop_session_dir_prefers_transcript_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    transcript = tmp_path / "sessions" / "current.jsonl"
+    fake_home = tmp_path / "home"
+    monkeypatch.setattr(refusal_backstop.Path, "home", classmethod(lambda cls: fake_home))
+    monkeypatch.setenv("CODEX_REDTEAM_SESSION_DIR", str(tmp_path / "ignored"))
+
+    resolved = refusal_backstop._session_dir(str(transcript))
+
+    assert resolved == transcript.parent
+
+
+def test_refusal_backstop_session_dir_uses_codex_home_without_transcript(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    codex_home = tmp_path / "codex-home"
+    fake_home = tmp_path / "home"
+    monkeypatch.setattr(patcher.Path, "home", classmethod(lambda cls: fake_home))
+    monkeypatch.setenv("CODEX_HOME", str(codex_home))
+    monkeypatch.setenv("CODEX_REDTEAM_SESSION_DIR", str(tmp_path / "ignored"))
+
+    resolved = refusal_backstop._session_dir()
+
+    assert resolved == codex_home / "sessions"
+
+
+def test_session_patcher_default_session_dir_uses_codex_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    codex_home = tmp_path / "codex-home"
+    monkeypatch.setenv("CODEX_HOME", str(codex_home))
+
+    assert patcher.default_session_dir() == codex_home / "sessions"
 
 
 def test_project_home_rejects_codex_home_mix(tmp_path: Path) -> None:
