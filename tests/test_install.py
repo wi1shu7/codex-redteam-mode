@@ -8,6 +8,7 @@ import tomllib
 from pathlib import Path
 
 import pytest
+from tomlkit.exceptions import ParseError as TomlParseError
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -50,6 +51,47 @@ trust_level = "trusted"
     assert merged["automation"]["allow_restricted_actions"] is False
     assert merged["mcp_servers"]["ida-pro-mcp"]["command"] == "ida-mcp"
     assert merged["projects"]["/work/demo"]["trust_level"] == "trusted"
+    assert "# user-owned config" in target.read_text(encoding="utf-8")
+
+
+def test_merge_config_does_not_put_automation_keys_in_skills_array(tmp_path: Path) -> None:
+    target = tmp_path / "config.toml"
+    target.write_text(
+        """
+[automation]
+mode = "active"
+
+[[skills.config]]
+path = "/tmp/demo/SKILL.md"
+enabled = false
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    install.merge_config_file(REPO_ROOT / "config.toml", target, dry_run=False)
+
+    merged = tomllib.loads(target.read_text(encoding="utf-8"))
+    assert merged["automation"]["allow_restricted_actions"] is False
+    assert merged["automation"]["require_scope_for_network"] is True
+    assert "allow_restricted_actions" not in merged["skills"]["config"][0]
+    assert "require_scope_for_network" not in merged["skills"]["config"][0]
+
+
+def test_merge_config_supports_quoted_automation_table(tmp_path: Path) -> None:
+    target = tmp_path / "config.toml"
+    target.write_text(
+        """
+["automation"]
+mode = "active"
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    install.merge_config_file(REPO_ROOT / "config.toml", target, dry_run=False)
+
+    merged = tomllib.loads(target.read_text(encoding="utf-8"))
+    assert merged["automation"]["mode"] == "active"
+    assert merged["automation"]["allow_restricted_actions"] is False
 
 
 def test_merge_config_accepts_utf8_bom(tmp_path: Path) -> None:
@@ -101,7 +143,7 @@ def test_merge_config_invalid_existing_toml_does_not_backup_or_write(tmp_path: P
     original = "[automation\nmode = \"active\"\n"
     target.write_text(original, encoding="utf-8")
 
-    with pytest.raises(tomllib.TOMLDecodeError):
+    with pytest.raises(TomlParseError):
         install.merge_config_file(REPO_ROOT / "config.toml", target, dry_run=False)
 
     assert target.read_text(encoding="utf-8") == original

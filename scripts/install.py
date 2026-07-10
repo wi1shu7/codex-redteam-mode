@@ -1,7 +1,17 @@
 from __future__ import annotations
-import argparse, copy, json, os, platform, re, shutil, subprocess, sys, tomllib
+import argparse, copy, json, os, platform, re, shutil, subprocess, sys
 from datetime import datetime
 from pathlib import Path
+try:
+    import tomlkit
+    from tomlkit.exceptions import ParseError as TomlParseError
+except ModuleNotFoundError as exc:
+    print(
+        "ERROR: missing dependency 'tomlkit'. Install dependencies with: "
+        "python -m pip install -r requirements.txt",
+        file=sys.stderr,
+    )
+    raise SystemExit(1) from exc
 APP_NAME='codex-redteam-optin-mode'; APP_VERSION='1.1.1'
 AGENTS_BLOCK_START='<!-- codex-redteam-optin-mode:start -->'; AGENTS_BLOCK_END='<!-- codex-redteam-optin-mode:end -->'
 SESSION_STATUS='Loading session mode context'; PROMPT_STATUS='Checking mode-gated offensive routing'
@@ -33,65 +43,25 @@ def copy_file(src:Path,dst:Path,dry_run:bool)->None:
     info(f'copy {src} -> {dst}')
     if dry_run: return
     dst.parent.mkdir(parents=True, exist_ok=True); shutil.copy2(src,dst)
-def _toml_value(value:object)->str:
-    if isinstance(value,bool): return 'true' if value else 'false'
-    if isinstance(value,str): return json.dumps(value)
-    if isinstance(value,list):
-        if not value: return '[]'
-        return '[\n' + ''.join(f'  {_toml_value(item)},\n' for item in value) + ']'
-    raise TypeError(f'unsupported TOML value: {value!r}')
-def _toml_assignment(key:str,value:object)->list[str]:
-    rendered=_toml_value(value)
-    if '\n' in rendered:
-        first,*rest=rendered.splitlines()
-        return [f'{key} = {first}', *rest]
-    return [f'{key} = {rendered}']
-def _table_bounds(lines:list[str],table:str)->tuple[int,int]|None:
-    pattern=re.compile(r'^\s*\[([A-Za-z0-9_.-]+)\]\s*(?:#.*)?$')
-    start=None
-    for index,line in enumerate(lines):
-        match=pattern.match(line)
-        if not match: continue
-        if start is None:
-            if match.group(1)==table: start=index
-        else:
-            return start,index
-    return (start,len(lines)) if start is not None else None
-def _root_insert_index(lines:list[str])->int:
-    for index,line in enumerate(lines):
-        if re.match(r'^\s*\[',line): return index
-    return len(lines)
-def merge_config_text(template_text:str,existing_text:str)->str:
-    template=tomllib.loads(template_text); existing=tomllib.loads(existing_text) if existing_text.strip() else {}
-    lines=existing_text.splitlines()
+def _toml_container(value:object)->bool:
+    return hasattr(value,'items')
+def _merge_toml_missing(template:object,existing:object,path:str='')->bool:
     changed=False
-    root_lines:list[str]=[]
     for key,value in template.items():
-        if isinstance(value,dict): continue
         if key not in existing:
-            root_lines.extend(_toml_assignment(key,value)); changed=True
-    if root_lines:
-        insert_at=_root_insert_index(lines); lines[insert_at:insert_at]=root_lines+([''] if insert_at < len(lines) else [])
-    for table,values in template.items():
-        if not isinstance(values,dict): continue
-        if table in existing and not isinstance(existing[table],dict):
-            raise ValueError(f'config key {table!r} already exists and is not a table')
-        current=existing.get(table,{})
-        missing=[key for key in values if key not in current]
-        if not missing: continue
-        changed=True
-        new_lines=[]
-        if table not in existing:
-            new_lines=['',f'[{table}]']
-        for key in missing: new_lines.extend(_toml_assignment(key,values[key]))
-        if table in existing:
-            bounds=_table_bounds(lines,table)
-            if bounds is None: raise ValueError(f'could not locate existing table [{table}]')
-            lines[bounds[1]:bounds[1]]=new_lines
-        else:
-            lines.extend(new_lines)
-    if not changed: return existing_text
-    return '\n'.join(lines).rstrip()+'\n'
+            existing[key]=copy.deepcopy(value); changed=True; continue
+        current=existing[key]
+        if _toml_container(value):
+            if not _toml_container(current):
+                full_key=f'{path}.{key}' if path else str(key)
+                raise ValueError(f'config key {full_key!r} already exists and is not a table')
+            changed=_merge_toml_missing(value,current,f'{path}.{key}' if path else str(key)) or changed
+    return changed
+def merge_config_text(template_text:str,existing_text:str)->str:
+    template=tomlkit.parse(template_text)
+    existing=tomlkit.parse(existing_text) if existing_text.strip() else tomlkit.document()
+    if not _merge_toml_missing(template,existing): return existing_text
+    return tomlkit.dumps(existing)
 def backup_config_file(dst:Path,dry_run:bool)->Path:
     backup=dst.with_name(f'{dst.name}.{datetime.now().strftime("%Y%m%d%H%M%S")}.bak')
     info(f'backup {dst} -> {backup}')
