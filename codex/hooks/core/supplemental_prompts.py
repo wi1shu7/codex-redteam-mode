@@ -10,6 +10,24 @@ from pathlib import Path
 from typing import List
 
 SESSION_PROMPT_FILES = ("system-prompt.md", "do_special.md")
+REDTEAM_MODE_PROMPT_FILES = ("Reverse.md",)
+
+
+def _read_prompt_files(codex_dir: Path, names: tuple[str, ...]) -> str:
+    prompts_dir = codex_dir / "prompts"
+    if not prompts_dir.is_dir():
+        return ""
+
+    parts: List[str] = []
+    for name in names:
+        md_file = prompts_dir / name
+        if not md_file.is_file():
+            continue
+        content = md_file.read_text(encoding="utf-8").strip()
+        if content:
+            parts.append(content)
+
+    return "\n\n".join(parts)
 
 
 def build_prompt_chain_notice(codex_dir: Path, mode: str = "normal") -> str:
@@ -21,20 +39,14 @@ def build_prompt_chain_notice(codex_dir: Path, mode: str = "normal") -> str:
     if mode not in {"redteam-light", "redteam-full"}:
         return ""
 
-    prompts_dir = codex_dir / "prompts"
-    if not prompts_dir.is_dir():
+    return _read_prompt_files(codex_dir, SESSION_PROMPT_FILES)
+
+
+def build_redteam_mode_overlay(codex_dir: Path, mode: str) -> str:
+    """Load mode-level prompts injected on activation and session restore."""
+    if mode not in {"redteam-light", "redteam-full"}:
         return ""
-
-    parts: List[str] = []
-    for name in SESSION_PROMPT_FILES:
-        md_file = prompts_dir / name
-        if not md_file.is_file():
-            continue
-        content = md_file.read_text(encoding="utf-8").strip()
-        if content:
-            parts.append(content)
-
-    return "\n\n".join(parts)
+    return _read_prompt_files(codex_dir, REDTEAM_MODE_PROMPT_FILES)
 
 
 def build_prompt_overlay(codex_dir: Path, phase: str) -> str:

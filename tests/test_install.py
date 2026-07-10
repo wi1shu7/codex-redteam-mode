@@ -144,6 +144,7 @@ def test_hook_stdout_is_utf8_safe_under_gbk(tmp_path: Path) -> None:
     enabled_context = json.loads(enabled.stdout.decode("utf-8"))["hookSpecificOutput"]["additionalContext"]
     assert "Red-team mode enabled (redteam-light)" in enabled_context
     assert enabled_context.count("[prepoison:frame-lock]") == 1
+    assert "Reverse-engineering supplemental overlay" in enabled_context
     assert "预防性指令" in enabled_context
     routed = _run_hook_script_bytes(
         PROMPT_HOOK,
@@ -204,7 +205,7 @@ def test_session_start_preserves_mode_on_resume_and_compact(tmp_path: Path) -> N
         assert "CTF core contract" in started_context
         assert "Supplemental routing note" in started_context
         assert started_context.count("[prepoison:frame-lock]") == 1
-        assert "Reverse-engineering supplemental overlay" not in started_context
+        assert "Reverse-engineering supplemental overlay" in started_context
         assert json.loads(state_path.read_text(encoding="utf-8"))["mode"] == "redteam-light"
 
         routed = _run_hook_script(
@@ -256,6 +257,7 @@ def test_mode_enable_injects_prepoison_once(tmp_path: Path, command: str, mode: 
 
     assert f"Red-team mode enabled ({mode})" in context
     assert context.count("[prepoison:frame-lock]") == 1
+    assert "Reverse-engineering supplemental overlay" in context
     assert json.loads(
         (codex_home / "redteam-mode" / "state" / "sessions" / f"{session_id}.json").read_text(encoding="utf-8")
     )["mode"] == mode
@@ -490,6 +492,16 @@ def test_session_prompt_notice_excludes_phase_specific_prompts() -> None:
     assert "CTF core contract" in notice
     assert "Supplemental routing note" in notice
     assert "Reverse-engineering supplemental overlay" not in notice
+
+
+def test_redteam_mode_overlay_loads_reverse_prompt_only_for_active_modes() -> None:
+    light = supplemental_prompts.build_redteam_mode_overlay(CODEX_PATH, "redteam-light")
+    full = supplemental_prompts.build_redteam_mode_overlay(CODEX_PATH, "redteam-full")
+    normal = supplemental_prompts.build_redteam_mode_overlay(CODEX_PATH, "normal")
+
+    assert "Reverse-engineering supplemental overlay" in light
+    assert full == light
+    assert normal == ""
 
 
 def test_reverse_prompt_overlay_is_loaded_only_for_reverse_phase() -> None:

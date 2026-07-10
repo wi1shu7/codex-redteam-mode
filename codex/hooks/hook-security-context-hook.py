@@ -12,7 +12,7 @@ for candidate in (HOOKS_DIR, CODEX_DIR):
     if candidate_str not in sys.path:
         sys.path.insert(0, candidate_str)
 
-from core import emit_hook_json, extract_prompt, extract_session_id, load_runtime_state, parse_mode_command, parse_opsec_command, save_runtime_state
+from core import build_redteam_mode_overlay, emit_hook_json, extract_prompt, extract_session_id, load_runtime_state, parse_mode_command, parse_opsec_command, save_runtime_state
 from core.controller import process_turn
 from core.prompt_parser import decode_stdin, load_payload
 from core.refusal_backstop import build_recent_refusal_overlay, payload_has_recent_refusal
@@ -55,10 +55,17 @@ def main() -> None:
         else:
             state = replace(default_state(session_id), mode=mode, opsec_level=state.opsec_level)
             save_runtime_state(state, session_id=session_id)
+            context = (
+                f"[mode] Red-team mode enabled ({mode}). Future prompts will use "
+                "phase -> router -> pack -> leaf routing until you explicitly disable it."
+            )
+            mode_overlay = build_redteam_mode_overlay(CODEX_DIR, mode)
+            if mode_overlay:
+                context = f"{context}\n{mode_overlay}"
             print(
                 emit_hook_json(
                     "UserPromptSubmit",
-                    f"[mode] Red-team mode enabled ({mode}). Future prompts will use phase -> router -> pack -> leaf routing until you explicitly disable it.",
+                    context,
                     inject_prepoison=True,
                 )
             )

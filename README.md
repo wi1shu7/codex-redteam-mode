@@ -172,7 +172,7 @@ On each run, it reads the previous manifest, removes only project-managed files 
 - Custom `--agents-home` installs warn when runtime priority is not enabled, and validation reports when the runtime-selected skill root differs from the installed root
 - `SessionStart` and `UserPromptSubmit` output only Codex-supported wire fields; route phase remains inside `additionalContext` instead of being serialized as an unknown field
 - `SessionStart(source=resume|compact)` preserves the existing session mode, while `startup` and `clear` reset to normal
-- Resumed and compacted red-team sessions load only `system-prompt.md` and `do_special.md`; phase-specific files such as `Reverse.md` are selected per turn after phase detection
+- Red-team activation and `SessionStart(source=resume|compact)` inject the complete `Reverse.md` supplemental context directly; normal startup remains free of this mode-level overlay
 - Hook JSON is ASCII-safe on stdout, so Windows legacy code pages cannot corrupt the UTF-8 JSON protocol or Chinese context
 - Relative install arguments are resolved against the install command's working directory, and generated hooks and manifest fields use absolute paths
 - `copy_tree` replaces managed directories (`router/`, `orchestrator/`, etc.) wholesale; skill directories copy only `SKILL.md`
@@ -200,7 +200,7 @@ python scripts/install.py   # second run: cleanup → fresh deploy → same stat
 enable red team mode
 ```
 
-Submit mode commands as a separate prompt. Enabling `redteam-light` or `redteam-full` injects the shared prepoison context once; each subsequent task prompt is routed independently through `phase -> router -> pack -> leaf`.
+Submit mode commands as a separate prompt. Enabling `redteam-light` or `redteam-full` injects the shared prepoison and `Reverse.md` supplemental context once; each subsequent task prompt is routed independently through `phase -> router -> pack -> leaf`. Active red-team sessions inject the same supplemental context again on `resume` or `compact`.
 
 ### Disable Red Team Mode
 

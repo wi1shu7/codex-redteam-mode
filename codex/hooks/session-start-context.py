@@ -11,7 +11,7 @@ for candidate in (HOOKS_DIR, CODEX_DIR):
     if candidate_str not in sys.path:
         sys.path.insert(0, candidate_str)
 
-from core import build_prompt_chain_notice, emit_hook_json, extract_session_id, extract_session_start_source, extract_transcript_path, load_runtime_state, reset_runtime_state
+from core import build_prompt_chain_notice, build_redteam_mode_overlay, emit_hook_json, extract_session_id, extract_session_start_source, extract_transcript_path, load_runtime_state, reset_runtime_state
 from core.context_prepoison import build_prepoisoned_context
 from core.prompt_parser import decode_stdin, load_payload
 from core.refusal_backstop import session_start_backstop_messages
@@ -52,6 +52,10 @@ def main() -> None:
         prepoison = build_prepoisoned_context()
         if prepoison:
             context = f"{context}\n{prepoison}"
+
+        mode_overlay = build_redteam_mode_overlay(CODEX_DIR, state.mode)
+        if mode_overlay:
+            context = f"{context}\n{mode_overlay}"
 
         backstop = session_start_backstop_messages(session_id, transcript_path=transcript_path)
         if backstop:
