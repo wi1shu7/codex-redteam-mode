@@ -2,7 +2,7 @@
 
 [中文说明](./README_ZH.md)
 
-**Current release:** v1.1.1
+**Current release:** v1.1.2
 
 > Normal by default. Red-team mode is opt-in; once enabled, automation starts automatically by default.
 
@@ -68,7 +68,11 @@ This project solves both: **normal mode stays normal**, and red-team mode must b
 
 ### Python (cross-platform)
 
-Requires Python 3.11+ because the installer uses the standard-library `tomllib` parser for safe `config.toml` merging.
+Requires Python 3.11+ and the dependencies in `requirements.txt`. The installer uses `tomlkit` for round-trip `config.toml` merging.
+
+```bash
+python -m pip install -r requirements.txt
+```
 
 ```bash
 python scripts/install.py
@@ -81,6 +85,8 @@ python scripts/install.py
 | `--project-home PATH` | Project-level install root. Writes Codex files to `PATH/.codex` and skills to `PATH/.agents/skills` unless `--agents-home` is set |
 | `--agents-home PATH` | Custom agents directory for skill cards (default: `~/.agents`, or `PATH/.agents` with `--project-home`) |
 | `--codex-home PATH` | Compatibility option for a custom Codex home directory (default: `~/.codex`). Do not combine with `--project-home` |
+| `--log-root PATH` | Custom automation log root recorded in the install manifest |
+| `--enable-custom-skill-dirs` | Allow runtime skill-card lookup to use manifest-recorded custom skill directories directly |
 | `--dry-run` | Preview all operations without writing any files |
 | `--uninstall` | Remove all managed files, hooks, and AGENTS.md blocks |
 
@@ -97,6 +103,9 @@ python scripts/install.py --project-home /path/to/project
 # Project-level install with shared skills directory
 python scripts/install.py --project-home /path/to/project --agents-home /path/to/agents
 
+# Project-level install with custom runtime log root
+python scripts/install.py --project-home /path/to/project --log-root /path/to/logs
+
 # Full uninstall
 python scripts/install.py --uninstall
 ```
@@ -110,8 +119,8 @@ python scripts/install.py --uninstall
 5. **Skill packs** — deploys all 35 SKILL.md domain cards from `agents/skills/` to the selected agents home (only `SKILL.md` is copied per skill directory)
 6. **Seed prompts** — copies prompt files to `~/.codex/prompts/` (skips existing)
 7. **Merge hooks.json** — strips old managed hooks, then injects the current `SessionStart` and `UserPromptSubmit` hooks (preserves user-defined hooks)
-8. **Merge AGENTS.md** — injects or updates a managed block (`<!-- codex-redteam-optin-mode:start -->`) into `~/.codex/AGENTS.md` (preserves user content outside the block)
-9. **Write manifest** — records all managed paths to `~/.codex/redteam-install-manifest.json` for future upgrade/cleanup tracking
+8. **Merge AGENTS.md** — injects or updates a managed block (`<!-- codex-redteam-optin-mode:start -->`) into `~/.codex/AGENTS.md`, or `<project>/AGENTS.md` with `--project-home` (preserves user content outside the block)
+9. **Write manifest** — records managed paths, merged files, skill-card paths, custom skill-dir mode, and automation log root to `redteam-install-manifest.json`
 10. **Validate** — runs `scripts/validate.py` to verify every subsystem file is in place
 
 ### Upgrade & Idempotency
@@ -121,8 +130,10 @@ The installer is **idempotent** — running it repeatedly is safe and will not d
 On each run, it reads the previous manifest, removes only project-managed files from the old install, then re-deploys from the current version. This means:
 - Version upgrades are clean without touching user-owned files
 - `config.toml` is merged instead of overwritten; existing user settings are preserved, and changed existing configs are backed up as `config.toml.YYYYMMDDHHMMSS.bak`
+- `config.toml` merging uses `tomlkit` so array tables such as `[[skills.config]]` do not receive keys meant for `[automation]`
 - `copy_tree` replaces managed directories (`router/`, `orchestrator/`, etc.) wholesale; skill directories copy only `SKILL.md`
 - `AGENTS.md`, `hooks.json`, and `config.toml` are never deleted by upgrade cleanup — they use merge logic so user customizations survive
+- Project installs place the managed AGENTS block in `<project>/AGENTS.md`; old `<project>/.codex/AGENTS.md` managed blocks are migrated safely
 - Python cache files (`__pycache__`, `.pyc`, `.pyo`) are not copied into the installed runtime
 - If the manifest is missing, the installer falls back to cleaning the current target set plus known legacy paths
 
@@ -210,7 +221,7 @@ Before planning tool use, the automation layer reads the user's local MCP/tool i
 
 ```bash
 # Full test suite
-python -m unittest discover -s tests -p "test_*.py"
+python -m pytest -q
 
 # Quick validation
 python scripts/validate.py

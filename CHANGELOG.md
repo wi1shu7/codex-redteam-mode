@@ -4,6 +4,23 @@ All notable changes to the Codex Red Team Opt-In Mode project.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.2] - 2026-07-10
+
+### Added
+
+- Added `requirements.txt` with the `tomlkit` runtime dependency.
+- Added installer options `--log-root PATH` and `--enable-custom-skill-dirs`.
+- Added manifest fields for `skills_paths`, `custom_skill_dirs_enabled`, and `log_root`.
+
+### Fixed
+
+- Switched `config.toml` merging to `tomlkit` round-trip editing so array tables such as `[[skills.config]]` no longer receive `[automation]` keys.
+- Project installs now write the managed AGENTS block to `<project>/AGENTS.md` and safely migrate old `<project>/.codex/AGENTS.md` managed blocks.
+- Runtime skill-card lookup now uses project `.agents/skills`, user `.agents/skills`, and manifest-recorded paths instead of `AGENTS_HOME`.
+- Automation decision logs now use manifest `log_root` and default to `.codex/logs/codex-redteam`.
+- Session backstop lookup now uses hook `transcript_path` when available and falls back through `CODEX_HOME/sessions` to `~/.codex/sessions`.
+- Documentation now uses the real pytest test entrypoint.
+
 ## [1.1.1] - 2026-07-09
 
 ### Added
@@ -139,6 +156,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Managed incremental installer for Python and PowerShell.
 - Reference method layer and technology routing layer from three external skill repositories.
 
+[1.1.2]: https://github.com/chAng-L19/codex-redteam-mode/releases/tag/v1.1.2
 [1.1.1]: https://github.com/chAng-L19/codex-redteam-mode/releases/tag/v1.1.1
 [1.0.0]: https://github.com/chAng-L19/codex-redteam-mode/releases/tag/v1.0.0
 [0.6.0]: https://github.com/chAng-L19/codex-redteam-mode/releases/tag/v0.6.0
