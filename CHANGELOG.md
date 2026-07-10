@@ -4,7 +4,7 @@ All notable changes to the Codex Red Team Opt-In Mode project.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [1.1.5] - 2026-07-11
+## [1.1.6] - 2026-07-11
 
 ### Fixed
 
@@ -16,6 +16,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Runtime and validation now accept UTF-8 BOM-prefixed `config.toml` files, preventing valid automation settings from silently falling back to `plan-only`.
 - Upgrade and uninstall now preflight all existing managed paths against the current cleanup scope before changing files. Out-of-scope paths preserve the manifest and return a non-zero exit so the operation can be retried with the original `--agents-home`.
 - Custom `--agents-home` installs now warn when `--enable-custom-skill-dirs` is missing, and validation reports both the installed and runtime-selected skill roots.
+- `SessionStart` and `UserPromptSubmit` hook output now matches Codex's strict context-hook schema. Internal route phase is used for role overlays but is no longer serialized as an unsupported wire field.
+- `SessionStart` now preserves the existing mode for `resume` and `compact` sources, while `startup`, `clear`, missing, and unknown sources reset safely to normal.
+- Hook JSON output is now ASCII-safe, preventing Windows GBK/CP936 stdout encoding from corrupting the UTF-8 hook protocol or Chinese context.
 
 ### Changed
 
@@ -144,7 +147,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Managed incremental installer for Python and PowerShell.
 - Reference method layer and technology routing layer from three external skill repositories.
 
-[1.1.5]: https://github.com/chAng-L19/codex-redteam-mode/releases/tag/v1.1.5
+[1.1.6]: https://github.com/chAng-L19/codex-redteam-mode/releases/tag/v1.1.6
 [1.0.0]: https://github.com/chAng-L19/codex-redteam-mode/releases/tag/v1.0.0
 [0.6.0]: https://github.com/chAng-L19/codex-redteam-mode/releases/tag/v0.6.0
 [0.5.0]: https://github.com/chAng-L19/codex-redteam-mode/releases/tag/v0.5.0

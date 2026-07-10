@@ -2,7 +2,7 @@
 
 [中文说明](./README_ZH.md)
 
-**Current release:** v1.1.5
+**Current release:** v1.1.6
 
 > Normal by default. Red-team mode is opt-in; once enabled, automation starts automatically by default.
 
@@ -26,7 +26,7 @@ This project solves both: **normal mode stays normal**, and red-team mode must b
 - **SKILL.md Loop Runtime domain cards** — pure Markdown `scope-not-instruct` format: each card has `## Domain` (scope declaration), `## Boundaries` (forbidden actions), `## Pivot Hints` (direction changes), `## Exit Evidence` (required artifacts and minimum attempts) — no YAML, no JSON
 - **Graded feedback gates** — four-level gate decisions: `pass` (advance), `soft_fail` (retry/adjust), `pivot` (change path), `blocked` (halt for human)
 - **Dedicated routing layer** — regex-based router engine (Chinese + English patterns), fine-grained sub-routers per domain (5 web, 4 AD, 6 crypto, 5 network, 3 mobile), external skill adapters (ACS/hackskills/qiushi)
-- **Lightweight hooks** — activation engine, context prepoison, intent engine, loop engine, phase detector, semantic fallback, state manager, refusal backstop
+- **Lightweight hooks** — activation engine, context prepoison, intent engine, loop engine, phase detector, semantic fallback, state manager, refusal backstop, strict Codex wire output, and resume-safe session state
 - **Session patcher** — two-tier refusal detector (strong phrases + weak openers in Chinese + English), JSONL session cleaner with auto-backup and optional AI-powered rewrite
 - **Bounded Loop Runtime** — each decision exposes a trigger, feedback gate, and exit condition so the agent can adjust pace before advancing
 - **Artifact/gate-based progression** — prove one path before expanding, distinguish facts from assumptions
@@ -142,6 +142,9 @@ On each run, it reads the previous manifest, removes only project-managed files 
 - Invalid existing `config.toml` or `hooks.json` fails during preflight before files are copied or previous manifest paths are cleaned; UTF-8 BOM-prefixed config and hooks files are accepted by both validation and runtime loading
 - Upgrade and uninstall cleanup abort before changing files when an existing managed path is outside the current scope; the manifest is preserved so the operation can be retried with the original path arguments
 - Custom `--agents-home` installs warn when runtime priority is not enabled, and validation reports when the runtime-selected skill root differs from the installed root
+- `SessionStart` and `UserPromptSubmit` output only Codex-supported wire fields; route phase remains inside `additionalContext` instead of being serialized as an unknown field
+- `SessionStart(source=resume|compact)` preserves the existing session mode, while `startup` and `clear` reset to normal
+- Hook JSON is ASCII-safe on stdout, so Windows legacy code pages cannot corrupt the UTF-8 JSON protocol or Chinese context
 - Relative install arguments are resolved against the install command's working directory, and generated hooks and manifest fields use absolute paths
 - `copy_tree` replaces managed directories (`router/`, `orchestrator/`, etc.) wholesale; skill directories copy only `SKILL.md`
 - `AGENTS.md`, `hooks.json`, and `config.toml` are never deleted by upgrade cleanup — they use merge logic so user customizations survive

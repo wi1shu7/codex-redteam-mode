@@ -2,7 +2,7 @@
 
 [English](./README.md)
 
-**当前版本：** v1.1.5
+**当前版本：** v1.1.6
 
 > 默认 normal 模式。红队模式必须显式开启；一旦进入红队模式，自动化能力默认自动启动。
 
@@ -27,7 +27,7 @@ AI 辅助安全工作中有两个常见陷阱：
 - **SKILL.md Loop Runtime 领域卡** — 纯 Markdown `scope-not-instruct` 模式：每张卡片通过 `## Domain`（领域声明）、`## Boundaries`（禁止操作）、`## Pivot Hints`（转向提示）、`## Exit Evidence`（退出证据）四节定义 AI 在哪个领域工作、什么不能做、什么条件下退出，不规定具体做法
 - **5-Phase 引擎** — `controller.py` 编排 intent → phase routing → SKILL.md → taskbook → loop decision 全流程；分级反馈门（pass / soft_fail / pivot / blocked）驱动推进；`phase_drive` 实现 recon → strategy → testing → reporting 四阶段工作流
 - **证据 Artifact 追踪** — 类型化、可验证的 `EvidenceArtifact` 对象（`enumeration`、`reproduction`、`impact`），驱动 gate 式推进
-- **轻量 hooks** — 激活引擎、上下文预处理、意图引擎、循环引擎、phase 检测、语义 fallback、状态管理、拒答回退
+- **轻量 hooks** — 激活引擎、上下文预处理、意图引擎、循环引擎、phase 检测、语义 fallback、状态管理、拒答回退、严格 Codex wire 输出和 resume-safe 会话状态
 - **Session 修补器** — 两级拒答检测（强短语 + 弱开头词，中英文双语），JSONL session 文件清理，自动备份，可选 AI 改写回退
 - **有界 Loop Runtime** — 每次决策都包含触发器、反馈门和退出条件，用于根据证据调整节奏
 - **Artifact/gate 证据推进机制** — 区分事实与假设，以证据链驱动执行连续性
@@ -143,6 +143,9 @@ python scripts/install.py --project-home /path/to/project --agents-home /path/to
 - 已有 `config.toml` 或 `hooks.json` 非法时会在预检阶段失败，不会复制新文件，也不会清理上次安装 manifest 中记录的路径；验证器和运行时均支持带 UTF-8 BOM 的 config 与 hooks
 - 升级或卸载时，如果仍存在的托管路径超出当前清理范围，会在修改任何文件前终止并保留 manifest，用户可使用原始路径参数重试
 - 自定义 `--agents-home` 未启用运行时优先级时安装器会给出警告；验证器会报告运行时 skill 根目录是否与安装目录一致
+- `SessionStart` 和 `UserPromptSubmit` 只输出 Codex schema 支持的 wire 字段；路由 phase 保留在 `additionalContext` 中，不再作为未知字段序列化
+- `SessionStart(source=resume|compact)` 保留已有会话模式，`startup` 与 `clear` 则重置为 normal
+- hook stdout 使用 ASCII-safe JSON，避免 Windows 传统代码页破坏 UTF-8 JSON 协议或中文上下文
 - 相对安装参数以安装命令的工作目录为基准解析，生成的 hooks 和 manifest 字段均使用绝对路径
 - `copy_tree` 整目录替换托管目录（`router/`、`orchestrator/` 等），skill 目录仅复制 `SKILL.md`
 - `AGENTS.md`、`hooks.json` 和 `config.toml` 不会被升级清理删除——使用合并逻辑，用户自定义内容不受影响
