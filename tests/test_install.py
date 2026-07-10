@@ -173,7 +173,7 @@ def test_upgrade_cleanup_preserves_config_from_previous_manifest(tmp_path: Path)
     install._SAFE_ROOTS.clear()
     install._SAFE_ROOTS.extend([codex_home, agents_home, REPO_ROOT])
 
-    install.upgrade_cleanup(codex_home, agents_home, [], dry_run=False)
+    install.upgrade_cleanup(codex_home, agents_home, codex_home / "AGENTS.md", [], dry_run=False)
 
     assert config.exists()
     assert not instruction.exists()
@@ -183,28 +183,31 @@ def test_upgrade_cleanup_preserves_config_from_previous_manifest(tmp_path: Path)
 def test_manifest_tracks_config_as_merged_file(tmp_path: Path) -> None:
     codex_home = tmp_path / ".codex"
     managed = [codex_home / "instruction.ctf.md"]
+    agents_file = tmp_path / "AGENTS.md"
 
-    install.write_manifest(codex_home, managed, dry_run=False)
+    install.write_manifest(codex_home, agents_file, managed, dry_run=False)
 
     payload = json.loads(install.manifest_path(codex_home).read_text(encoding="utf-8"))
     assert str(codex_home / "config.toml") not in payload["managed_paths"]
     assert str(codex_home / "config.toml") in payload["merged_files"]
+    assert str(agents_file) in payload["merged_files"]
 
 
 def test_project_home_resolves_dot_codex_and_dot_agents(tmp_path: Path) -> None:
     project = tmp_path / "project"
 
-    codex_home, agents_home = install.resolve_install_homes(str(project), None, None)
+    codex_home, agents_home, agents_file = install.resolve_install_paths(str(project), None, None)
 
     assert codex_home == project / ".codex"
     assert agents_home == project / ".agents"
+    assert agents_file == project / "AGENTS.md"
 
 
 def test_project_home_allows_custom_agents_home(tmp_path: Path) -> None:
     project = tmp_path / "project"
     custom_agents = tmp_path / "custom-agents"
 
-    codex_home, agents_home = install.resolve_install_homes(
+    codex_home, agents_home, agents_file = install.resolve_install_paths(
         str(project),
         None,
         str(custom_agents),
@@ -212,6 +215,7 @@ def test_project_home_allows_custom_agents_home(tmp_path: Path) -> None:
 
     assert codex_home == project / ".codex"
     assert agents_home == custom_agents
+    assert agents_file == project / "AGENTS.md"
 
 
 def test_project_home_install_writes_under_dot_dirs(tmp_path: Path) -> None:
@@ -226,8 +230,51 @@ def test_project_home_install_writes_under_dot_dirs(tmp_path: Path) -> None:
 
     assert (project / ".codex" / "config.toml").exists()
     assert (project / ".codex" / "instruction.ctf.md").exists()
+    assert (project / "AGENTS.md").exists()
+    assert not (project / ".codex" / "AGENTS.md").exists()
     assert (project / ".agents" / "skills" / "redteam-cve-validation" / "SKILL.md").exists()
     assert not (project / "config.toml").exists()
+
+
+def test_project_home_migrates_old_dot_codex_agents_block(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    old_agents = project / ".codex" / "AGENTS.md"
+    old_agents.parent.mkdir(parents=True)
+    old_agents.write_text(install.managed_agents_block(REPO_ROOT), encoding="utf-8")
+
+    subprocess.run(
+        [sys.executable, str(INSTALL_PATH), "--project-home", str(project)],
+        cwd=REPO_ROOT,
+        check=True,
+        stdout=subprocess.DEVNULL,
+    )
+
+    assert (project / "AGENTS.md").exists()
+    assert not old_agents.exists()
+
+
+def test_project_home_uninstall_preserves_user_agents_content(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    agents_file = project / "AGENTS.md"
+
+    subprocess.run(
+        [sys.executable, str(INSTALL_PATH), "--project-home", str(project)],
+        cwd=REPO_ROOT,
+        check=True,
+        stdout=subprocess.DEVNULL,
+    )
+    agents_file.write_text(
+        "user guidance\n\n" + agents_file.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    subprocess.run(
+        [sys.executable, str(INSTALL_PATH), "--project-home", str(project), "--uninstall"],
+        cwd=REPO_ROOT,
+        check=True,
+        stdout=subprocess.DEVNULL,
+    )
+
+    assert agents_file.read_text(encoding="utf-8") == "user guidance\n"
 
 
 def test_project_home_install_accepts_custom_agents_home(tmp_path: Path) -> None:

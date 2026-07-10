@@ -142,6 +142,24 @@ def _manifest_skill_dir(repo_root: Path) -> Path | None:
     return None
 
 
+def _manifest_merged_file(codex_home: Path, filename: str) -> Path | None:
+    manifest = codex_home / "redteam-install-manifest.json"
+    if not manifest.exists():
+        return None
+    try:
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    for raw in data.get("merged_files", []):
+        try:
+            path = Path(raw)
+        except TypeError:
+            continue
+        if path.name == filename:
+            return path
+    return None
+
+
 def _resolve_skills_dir(repo_root: Path, source_tree_mode: bool) -> Path | None:
     repo_skills = repo_root / "agents" / "skills"
     if repo_skills.exists():
@@ -209,7 +227,7 @@ def validate_install(codex_home: Path) -> Tuple[bool, List[str]]:
             messages.append("hooks.json: MISSING")
             all_ok = False
 
-    agents_path = repo_root / "AGENTS.md"
+    agents_path = _manifest_merged_file(codex_home, "AGENTS.md") or repo_root / "AGENTS.md"
     if agents_path.exists():
         content = agents_path.read_text(encoding="utf-8")
         if "codex-redteam-optin-mode:start" in content:

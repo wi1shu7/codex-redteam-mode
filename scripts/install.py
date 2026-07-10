@@ -21,11 +21,15 @@ def good(msg:str)->None: print(color(f'[OK] {msg}','32'))
 def manifest_path(codex_home:Path)->Path: return codex_home/'redteam-install-manifest.json'
 def detect_codex_home(explicit:str|None)->Path: return Path(explicit).expanduser() if explicit else Path(os.environ.get('CODEX_HOME') or (Path.home()/'.codex'))
 def detect_agents_home(explicit:str|None)->Path: return Path(explicit).expanduser() if explicit else Path.home()/'.agents'
-def resolve_install_homes(project_home:str|None,codex_home:str|None,agents_home:str|None)->tuple[Path,Path]:
+def resolve_install_paths(project_home:str|None,codex_home:str|None,agents_home:str|None)->tuple[Path,Path,Path]:
     if project_home:
         project_root=Path(project_home).expanduser()
-        return project_root/'.codex', (Path(agents_home).expanduser() if agents_home else project_root/'.agents')
-    return detect_codex_home(codex_home), detect_agents_home(agents_home)
+        return project_root/'.codex', (Path(agents_home).expanduser() if agents_home else project_root/'.agents'), project_root/'AGENTS.md'
+    resolved_codex=detect_codex_home(codex_home)
+    return resolved_codex, detect_agents_home(agents_home), resolved_codex/'AGENTS.md'
+def resolve_install_homes(project_home:str|None,codex_home:str|None,agents_home:str|None)->tuple[Path,Path]:
+    codex_home,agents_home,_=resolve_install_paths(project_home,codex_home,agents_home)
+    return codex_home,agents_home
 def _is_within(path:Path,*roots:Path)->bool:
     resolved=path.resolve()
     return any(resolved == root.resolve() or str(resolved).startswith(str(root.resolve())+os.sep) for root in roots if root)
@@ -106,8 +110,8 @@ def build_hooks_payload(repo_root:Path,codex_home:Path)->dict:
 def managed_agents_block(repo_root:Path)->str:
     body=(repo_root/'codex'/'AGENTS.md').read_text(encoding='utf-8').strip()
     return f'{AGENTS_BLOCK_START}\n{body}\n{AGENTS_BLOCK_END}\n'
-def upsert_agents_file(repo_root:Path,codex_home:Path,dry_run:bool)->None:
-    dst=codex_home/'AGENTS.md'; block=managed_agents_block(repo_root); info(f"merge {repo_root/'codex'/'AGENTS.md'} -> {dst}")
+def upsert_agents_file(repo_root:Path,agents_file:Path,dry_run:bool)->None:
+    dst=agents_file; block=managed_agents_block(repo_root); info(f"merge {repo_root/'codex'/'AGENTS.md'} -> {dst}")
     if dry_run: return
     dst.parent.mkdir(parents=True, exist_ok=True)
     if dst.exists():
@@ -115,8 +119,8 @@ def upsert_agents_file(repo_root:Path,codex_home:Path,dry_run:bool)->None:
         merged=pattern.sub(lambda _: block, current) if pattern.search(current) else f"{current}{'' if current.endswith(chr(10)) or current=='' else chr(10)}\n{block}"
     else: merged=block
     dst.write_text(merged, encoding='utf-8')
-def remove_agents_block(codex_home:Path,dry_run:bool)->None:
-    dst=codex_home/'AGENTS.md'
+def remove_agents_block(agents_file:Path,dry_run:bool)->None:
+    dst=agents_file
     if not dst.exists(): return
     info(f'remove managed block from {dst}')
     if dry_run: return
@@ -170,34 +174,38 @@ def load_manifest_targets(codex_home:Path)->list[Path]:
         try: targets.append(Path(raw))
         except TypeError: pass
     return targets
-def write_manifest(codex_home:Path,targets:list[Path],dry_run:bool)->None:
-    manifest=manifest_path(codex_home); payload={'name':APP_NAME,'version':APP_VERSION,'installed_at':datetime.now().isoformat(timespec='seconds'),'managed_paths':[str(path) for path in targets],'merged_files':[str(codex_home/'AGENTS.md'),str(codex_home/'hooks.json'),str(codex_home/'config.toml')]}
+def write_manifest(codex_home:Path,agents_file:Path,targets:list[Path],dry_run:bool)->None:
+    manifest=manifest_path(codex_home); payload={'name':APP_NAME,'version':APP_VERSION,'installed_at':datetime.now().isoformat(timespec='seconds'),'managed_paths':[str(path) for path in targets],'merged_files':[str(agents_file),str(codex_home/'hooks.json'),str(codex_home/'config.toml')]}
     info(f'write manifest {manifest}')
     if dry_run: return
     manifest.parent.mkdir(parents=True, exist_ok=True); manifest.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding='utf-8')
-def upgrade_cleanup(codex_home:Path,agents_home:Path,default_targets:list[Path],dry_run:bool)->None:
-    manifest=manifest_path(codex_home); previous_targets=load_manifest_targets(codex_home); cleanup_targets=previous_targets or default_targets; protected={str(codex_home/'AGENTS.md'), str(codex_home/'hooks.json'), str(codex_home/'config.toml')}
+def upgrade_cleanup(codex_home:Path,agents_home:Path,agents_file:Path,default_targets:list[Path],dry_run:bool)->None:
+    manifest=manifest_path(codex_home); previous_targets=load_manifest_targets(codex_home); cleanup_targets=previous_targets or default_targets; protected={str(agents_file), str(codex_home/'AGENTS.md'), str(codex_home/'hooks.json'), str(codex_home/'config.toml')}
     remove_path(manifest,dry_run); seen=set()
     for target in cleanup_targets + legacy_cleanup_targets(codex_home,agents_home):
         key=str(target)
         if key in seen or key in protected: continue
         seen.add(key); remove_path(target,dry_run)
-def uninstall(repo_root:Path,codex_home:Path,agents_home:Path,dry_run:bool)->None:
+def uninstall(repo_root:Path,codex_home:Path,agents_home:Path,agents_file:Path,dry_run:bool)->None:
     targets=load_manifest_targets(codex_home) or managed_targets(repo_root,codex_home,agents_home)
     for target in targets: remove_path(target,dry_run)
     for target in legacy_cleanup_targets(codex_home,agents_home): remove_path(target,dry_run)
-    remove_agents_block(codex_home,dry_run); remove_managed_hooks(codex_home,dry_run); remove_path(manifest_path(codex_home),dry_run)
+    remove_agents_block(agents_file,dry_run)
+    if agents_file != codex_home/'AGENTS.md': remove_agents_block(codex_home/'AGENTS.md',dry_run)
+    remove_managed_hooks(codex_home,dry_run); remove_path(manifest_path(codex_home),dry_run)
 def main()->None:
     parser=argparse.ArgumentParser(); parser.add_argument('--codex-home'); parser.add_argument('--agents-home'); parser.add_argument('--project-home'); parser.add_argument('--dry-run', action='store_true'); parser.add_argument('--uninstall', action='store_true'); args=parser.parse_args()
     if args.project_home and args.codex_home: parser.error('--project-home cannot be combined with --codex-home')
-    repo_root=Path(__file__).resolve().parents[1]; codex_home,agents_home=resolve_install_homes(args.project_home,args.codex_home,args.agents_home)
+    repo_root=Path(__file__).resolve().parents[1]; codex_home,agents_home,agents_file=resolve_install_paths(args.project_home,args.codex_home,args.agents_home)
     _SAFE_ROOTS.extend([codex_home, agents_home, repo_root])
     if args.project_home: _SAFE_ROOTS.append(Path(args.project_home).expanduser())
     info(f'platform: {platform.system()}'); info(f'codex home: {codex_home}'); info(f'agents home: {agents_home}')
+    info(f'AGENTS.md: {agents_file}')
     current_targets=managed_targets(repo_root,codex_home,agents_home)
-    if args.uninstall: uninstall(repo_root,codex_home,agents_home,args.dry_run); good('uninstall complete'); return
-    upgrade_cleanup(codex_home,agents_home,current_targets,args.dry_run)
-    copy_file(repo_root/'instruction.ctf.md', codex_home/'instruction.ctf.md', args.dry_run); merge_config_file(repo_root/'config.toml', codex_home/'config.toml', args.dry_run); seed_prompt_files(repo_root,codex_home,args.dry_run); upsert_agents_file(repo_root,codex_home,args.dry_run)
+    if args.uninstall: uninstall(repo_root,codex_home,agents_home,agents_file,args.dry_run); good('uninstall complete'); return
+    upgrade_cleanup(codex_home,agents_home,agents_file,current_targets,args.dry_run)
+    if agents_file != codex_home/'AGENTS.md': remove_agents_block(codex_home/'AGENTS.md',args.dry_run)
+    copy_file(repo_root/'instruction.ctf.md', codex_home/'instruction.ctf.md', args.dry_run); merge_config_file(repo_root/'config.toml', codex_home/'config.toml', args.dry_run); seed_prompt_files(repo_root,codex_home,args.dry_run); upsert_agents_file(repo_root,agents_file,args.dry_run)
     copy_file(repo_root/'codex'/'hooks'/'session-start-context.py', codex_home/'hooks'/'session-start-context.py', args.dry_run)
     copy_file(repo_root/'codex'/'hooks'/'hook-security-context-hook.py', codex_home/'hooks'/'hook-security-context-hook.py', args.dry_run)
     copy_file(repo_root/'codex'/'hooks'/'redteam_state.py', codex_home/'hooks'/'redteam_state.py', args.dry_run)
@@ -207,5 +215,5 @@ def main()->None:
     copy_tree(repo_root/'codex'/'automation', codex_home/'automation', args.dry_run)
     copy_tree(repo_root/'codex'/'session_patcher', codex_home/'session_patcher', args.dry_run)
     for skill_dir in repo_skill_dirs(repo_root): copy_skill_md(skill_dir, agents_home/'skills'/skill_dir.name, args.dry_run)
-    merge_hooks_json(repo_root,codex_home,args.dry_run); write_manifest(codex_home,current_targets,args.dry_run); run_validate(repo_root,codex_home,args.dry_run); good('install complete')
+    merge_hooks_json(repo_root,codex_home,args.dry_run); write_manifest(codex_home,agents_file,current_targets,args.dry_run); run_validate(repo_root,codex_home,args.dry_run); good('install complete')
 if __name__=='__main__': main()
