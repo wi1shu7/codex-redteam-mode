@@ -14,7 +14,7 @@ from tomlkit.exceptions import ParseError as TomlParseError
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 INSTALL_PATH = REPO_ROOT / "scripts" / "install.py"
-SKILL_CARD_PATH = REPO_ROOT / "codex" / "hooks" / "core" / "skill_card.py"
+HOOKS_PATH = REPO_ROOT / "codex" / "hooks"
 
 spec = importlib.util.spec_from_file_location("install_script", INSTALL_PATH)
 install = importlib.util.module_from_spec(spec)
@@ -22,11 +22,9 @@ sys.modules[spec.name] = install
 assert spec.loader is not None
 spec.loader.exec_module(install)
 
-skill_spec = importlib.util.spec_from_file_location("skill_card_script", SKILL_CARD_PATH)
-skill_card = importlib.util.module_from_spec(skill_spec)
-sys.modules[skill_spec.name] = skill_card
-assert skill_spec.loader is not None
-skill_spec.loader.exec_module(skill_card)
+if str(HOOKS_PATH) not in sys.path:
+    sys.path.insert(0, str(HOOKS_PATH))
+from core import runtime_paths, skill_card
 
 
 def _write_skill(skills_root: Path, name: str = "redteam-demo") -> Path:
@@ -444,6 +442,31 @@ def test_skill_resolver_falls_back_to_manifest_root_when_defaults_missing(tmp_pa
     resolved = skill_card.resolve_skills_dir(project / ".codex")
 
     assert resolved == custom_root
+
+
+def test_runtime_log_root_comes_from_manifest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    project = tmp_path / "project"
+    log_root = tmp_path / "custom-logs"
+    fake_home = tmp_path / "home"
+    manifest = project / ".codex" / "redteam-install-manifest.json"
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text(json.dumps({"log_root": str(log_root)}), encoding="utf-8")
+    monkeypatch.setattr(runtime_paths.Path, "home", classmethod(lambda cls: fake_home))
+
+    resolved = runtime_paths.resolve_log_root(project / ".codex")
+
+    assert resolved == log_root
+
+
+def test_runtime_log_root_falls_back_to_user_codex_logs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    project = tmp_path / "project"
+    fake_home = tmp_path / "home"
+    monkeypatch.setattr(runtime_paths.Path, "home", classmethod(lambda cls: fake_home))
+    monkeypatch.delenv("CODEX_HOME", raising=False)
+
+    resolved = runtime_paths.resolve_log_root(project / ".codex")
+
+    assert resolved == fake_home / ".codex" / "logs" / "codex-redteam"
 
 
 def test_project_home_rejects_codex_home_mix(tmp_path: Path) -> None:

@@ -31,6 +31,7 @@ from .memory_store import (
 from .phase_detector import detect_phase
 from .target_parser import extract_target
 from .prompt_sanitizer import build_sanitizer_context
+from .runtime_paths import resolve_log_root
 from .skill_card import load_skill_card, resolve_skills_dir
 from .supplemental_prompts import build_prompt_overlay
 from .taskbook import Taskbook, refresh_taskbook, select_current_task
@@ -612,7 +613,7 @@ def process_turn(
         runtime_state = _build_loop_runtime_state(working, memory, target=target, automation_mode=automation_mode)
         
         # Create LoopRuntime instance pointing to session logs
-        log_root = codex_dir.parent / "logs" / (working.session_id or "default")
+        log_root = resolve_log_root(codex_dir) / (working.session_id or "default")
         mcp_paths = _mcp_inventory_paths_from_config(codex_dir)
         runtime = LoopRuntime(
             log_root=log_root,

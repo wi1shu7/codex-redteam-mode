@@ -9,13 +9,14 @@ Parsing precedence: ## section headings > frontmatter fields.
 """
 from __future__ import annotations
 
-import json
 import logging
 import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+from .runtime_paths import load_runtime_manifest, project_root_from_codex_dir
 
 logger = logging.getLogger(__name__)
 
@@ -230,46 +231,12 @@ def _parse_skill_md(text: str, skill_id: str) -> SkillCard:
 # Path resolution + public loader
 # ---------------------------------------------------------------------------
 
-def _project_root_from_codex_dir(codex_dir: Path) -> Path:
-    return codex_dir.parent
-
-
 def _has_skill_cards(skills_dir: Path) -> bool:
     return skills_dir.is_dir() and any(skills_dir.glob("*/SKILL.md"))
 
 
-def _manifest_candidates(codex_dir: Path) -> list[Path]:
-    project_root = _project_root_from_codex_dir(codex_dir)
-    candidates = [project_root / ".codex" / "redteam-install-manifest.json"]
-    env_codex = os.environ.get("CODEX_HOME")
-    if env_codex:
-        candidates.append(Path(env_codex).expanduser() / "redteam-install-manifest.json")
-    candidates.append(Path.home() / ".codex" / "redteam-install-manifest.json")
-    seen: set[str] = set()
-    unique: list[Path] = []
-    for candidate in candidates:
-        key = str(candidate)
-        if key not in seen:
-            seen.add(key)
-            unique.append(candidate)
-    return unique
-
-
-def _load_manifest(codex_dir: Path) -> dict | None:
-    for manifest in _manifest_candidates(codex_dir):
-        if not manifest.exists():
-            continue
-        try:
-            data = json.loads(manifest.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            continue
-        if isinstance(data, dict):
-            return data
-    return None
-
-
 def _default_skills_dirs(codex_dir: Path) -> list[Path]:
-    project_root = _project_root_from_codex_dir(codex_dir)
+    project_root = project_root_from_codex_dir(codex_dir)
     return [project_root / ".agents" / "skills", Path.home() / ".agents" / "skills"]
 
 
@@ -299,7 +266,7 @@ def resolve_skills_dir(codex_dir: Path) -> Path:
     locations in redteam-install-manifest.json so hook behavior follows the
     install manifest instead of ambient shell state.
     """
-    manifest = _load_manifest(codex_dir)
+    manifest = load_runtime_manifest(codex_dir)
     manifest_root = _manifest_skills_root(manifest)
     if manifest and manifest.get("custom_skill_dirs_enabled") and manifest_root is not None:
         return manifest_root
