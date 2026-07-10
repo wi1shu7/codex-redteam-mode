@@ -17,6 +17,8 @@ INSTALL_PATH = REPO_ROOT / "scripts" / "install.py"
 VALIDATE_PATH = REPO_ROOT / "scripts" / "validate.py"
 CODEX_PATH = REPO_ROOT / "codex"
 HOOKS_PATH = REPO_ROOT / "codex" / "hooks"
+SESSION_START_HOOK = HOOKS_PATH / "session-start-context.py"
+PROMPT_HOOK = HOOKS_PATH / "hook-security-context-hook.py"
 
 spec = importlib.util.spec_from_file_location("install_script", INSTALL_PATH)
 install = importlib.util.module_from_spec(spec)
@@ -55,6 +57,18 @@ def _write_session(path: Path, mtime: int) -> Path:
     return path
 
 
+def _run_hook_script(script: Path, payload: dict, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, "-B", str(script)],
+        input=json.dumps(payload),
+        cwd=REPO_ROOT,
+        env=env,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
 @pytest.mark.parametrize("event", ["SessionStart", "UserPromptSubmit"])
 def test_context_hook_output_matches_codex_wire_schema(event: str) -> None:
     rendered = json.loads(emitter.emit_hook_json(event, "context"))
@@ -78,6 +92,74 @@ def test_role_phase_is_used_only_inside_additional_context() -> None:
     specific = rendered["hookSpecificOutput"]
     assert set(specific) == {"hookEventName", "additionalContext"}
     assert "Current phase: web" in specific["additionalContext"]
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected"),
+    [
+        ({"source": "startup"}, "startup"),
+        ({"source": "RESUME"}, "resume"),
+        ({"source": " compact "}, "compact"),
+        ({"source": "future"}, ""),
+        ({"metadata": {"source": "resume"}}, ""),
+    ],
+)
+def test_extract_session_start_source(payload: dict, expected: str) -> None:
+    assert prompt_parser.extract_session_start_source(payload) == expected
+
+
+def test_session_start_preserves_mode_on_resume_and_compact(tmp_path: Path) -> None:
+    session_id = "resume-session"
+    temp_dir = tmp_path / "temp"
+    env = {
+        **os.environ,
+        "TEMP": str(temp_dir),
+        "TMP": str(temp_dir),
+        "CODEX_REDTEAM_AUTOMATION_MODE": "plan-only",
+        "NO_COLOR": "1",
+    }
+    transcript = tmp_path / "sessions" / "current.jsonl"
+    state_path = temp_dir / "codex_redteam_mode_states" / f"{session_id}.json"
+
+    _run_hook_script(
+        SESSION_START_HOOK,
+        {"session_id": session_id, "transcript_path": str(transcript), "source": "startup"},
+        env,
+    )
+    _run_hook_script(PROMPT_HOOK, {"session_id": session_id, "prompt": "/redteam light"}, env)
+    assert json.loads(state_path.read_text(encoding="utf-8"))["mode"] == "redteam-light"
+
+    for source in ("resume", "compact"):
+        started = _run_hook_script(
+            SESSION_START_HOOK,
+            {"session_id": session_id, "transcript_path": str(transcript), "source": source},
+            env,
+        )
+        started_context = json.loads(started.stdout)["hookSpecificOutput"]["additionalContext"]
+        assert "Session mode restored (redteam-light)" in started_context
+        assert json.loads(state_path.read_text(encoding="utf-8"))["mode"] == "redteam-light"
+
+        routed = _run_hook_script(
+            PROMPT_HOOK,
+            {"session_id": session_id, "prompt": "Review authentication bypass risk in the login endpoint"},
+            env,
+        )
+        routed_context = json.loads(routed.stdout)["hookSpecificOutput"]["additionalContext"]
+        assert "[mode:redteam-light]" in routed_context
+        assert "[router:" in routed_context
+
+    _run_hook_script(
+        SESSION_START_HOOK,
+        {"session_id": session_id, "transcript_path": str(transcript), "source": "clear"},
+        env,
+    )
+    assert json.loads(state_path.read_text(encoding="utf-8"))["mode"] == "normal"
+    after_clear = _run_hook_script(
+        PROMPT_HOOK,
+        {"session_id": session_id, "prompt": "Review authentication bypass risk"},
+        env,
+    )
+    assert after_clear.stdout == ""
 
 
 def test_merge_config_preserves_user_sections(tmp_path: Path) -> None:

@@ -40,6 +40,7 @@ TRANSCRIPT_PATH_KEYS = (
     "transcript_path",
     "transcriptPath",
 )
+SESSION_START_SOURCES = {"startup", "resume", "clear", "compact"}
 
 
 def decode_stdin(data: bytes) -> str:
@@ -144,6 +145,16 @@ def extract_transcript_path(payload: Any) -> Optional[str]:
             if found:
                 return found
     return None
+
+
+def extract_session_start_source(payload: Any) -> str:
+    if not isinstance(payload, dict):
+        return ""
+    value = payload.get("source")
+    if not isinstance(value, str):
+        return ""
+    source = value.strip().casefold()
+    return source if source in SESSION_START_SOURCES else ""
 
 
 def parse_mode_command(prompt: str) -> Optional[str]:

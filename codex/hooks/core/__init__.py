@@ -5,6 +5,7 @@ from .prompt_parser import (
     decode_stdin,
     extract_prompt,
     extract_session_id,
+    extract_session_start_source,
     extract_transcript_path,
     parse_mode_command,
     parse_opsec_command,
