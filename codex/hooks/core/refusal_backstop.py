@@ -24,6 +24,9 @@ def _transcript_file(transcript_path: str | None) -> Path | None:
 def _session_dir(transcript_path: str | None = None) -> Path:
     transcript = _transcript_file(transcript_path)
     if transcript is not None:
+        for parent in transcript.parents:
+            if parent.name.casefold() == "sessions":
+                return parent
         return transcript.parent
     return default_session_dir()
 

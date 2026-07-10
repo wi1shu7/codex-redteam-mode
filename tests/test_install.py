@@ -41,6 +41,13 @@ def _write_skill(skills_root: Path, name: str = "redteam-demo") -> Path:
     return skill_dir
 
 
+def _write_session(path: Path, mtime: int) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text('{"type":"event_msg","payload":{}}\n', encoding="utf-8")
+    os.utime(path, (mtime, mtime))
+    return path
+
+
 def test_merge_config_preserves_user_sections(tmp_path: Path) -> None:
     target = tmp_path / "config.toml"
     target.write_text(
@@ -753,15 +760,57 @@ def test_extract_transcript_path_from_hook_payload() -> None:
     assert prompt_parser.extract_transcript_path(payload) == "C:/tmp/session.jsonl"
 
 
-def test_refusal_backstop_session_dir_prefers_transcript_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    transcript = tmp_path / "sessions" / "current.jsonl"
+def test_refusal_backstop_session_dir_uses_transcript_session_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    transcript = tmp_path / "sessions" / "2026" / "07" / "10" / "current.jsonl"
     fake_home = tmp_path / "home"
     monkeypatch.setattr(refusal_backstop.Path, "home", classmethod(lambda cls: fake_home))
     monkeypatch.setenv("CODEX_REDTEAM_SESSION_DIR", str(tmp_path / "ignored"))
 
     resolved = refusal_backstop._session_dir(str(transcript))
 
-    assert resolved == transcript.parent
+    assert resolved == tmp_path / "sessions"
+
+
+def test_refusal_backstop_session_dir_falls_back_to_transcript_parent(tmp_path: Path) -> None:
+    transcript = tmp_path / "transcripts" / "current.jsonl"
+
+    assert refusal_backstop._session_dir(str(transcript)) == transcript.parent
+
+
+def test_refusal_backstop_selects_previous_session_across_date_directories(tmp_path: Path) -> None:
+    sessions = tmp_path / "sessions"
+    previous = _write_session(sessions / "2026" / "07" / "09" / "previous.jsonl", 10)
+    current = _write_session(sessions / "2026" / "07" / "10" / "current.jsonl", 20)
+
+    selected = refusal_backstop._select_previous_session(None, str(current))
+
+    assert selected == previous
+
+
+def test_refusal_backstop_selects_previous_session_on_same_day(tmp_path: Path) -> None:
+    day = tmp_path / "sessions" / "2026" / "07" / "10"
+    previous = _write_session(day / "previous.jsonl", 10)
+    current = _write_session(day / "current.jsonl", 20)
+
+    assert refusal_backstop._select_previous_session(None, str(current)) == previous
+
+
+def test_refusal_backstop_selects_latest_other_file_when_current_is_missing(tmp_path: Path) -> None:
+    sessions = tmp_path / "sessions"
+    older = _write_session(sessions / "2026" / "07" / "09" / "older.jsonl", 10)
+    latest = _write_session(sessions / "2026" / "07" / "10" / "latest.jsonl", 20)
+    missing_current = sessions / "2026" / "07" / "11" / "current.jsonl"
+
+    assert refusal_backstop._select_previous_session(None, str(missing_current)) == latest
+    assert latest != older
+
+
+def test_refusal_backstop_does_not_fall_back_to_another_profile(tmp_path: Path) -> None:
+    custom_sessions = tmp_path / "custom" / "sessions"
+    current = _write_session(custom_sessions / "2026" / "07" / "10" / "current.jsonl", 20)
+    _write_session(tmp_path / "home" / ".codex" / "sessions" / "2026" / "07" / "09" / "global.jsonl", 10)
+
+    assert refusal_backstop._select_previous_session(None, str(current)) is None
 
 
 def test_refusal_backstop_session_dir_uses_codex_home_without_transcript(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
