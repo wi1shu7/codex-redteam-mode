@@ -139,6 +139,8 @@ On each run, it reads the previous manifest, removes only project-managed files 
 - Version upgrades are clean without touching user-owned files
 - `config.toml` is merged instead of overwritten; existing user settings are preserved, and changed existing configs are backed up as `config.toml.YYYYMMDDHHMMSS.bak`
 - `config.toml` merging uses `tomlkit` so array tables such as `[[skills.config]]` do not receive keys meant for `[automation]`
+- The manifest records each `config.toml` value and table added by the installer; uninstall removes only unchanged installer-owned values before deleting referenced files, while user-modified values are preserved
+- Legacy manifests without field ownership metadata preserve `instruction.ctf.md` when `config.toml` still references it, avoiding a broken Codex profile after uninstall
 - Invalid existing `config.toml` or `hooks.json` fails during preflight before files are copied or previous manifest paths are cleaned; UTF-8 BOM-prefixed config and hooks files are accepted by both validation and runtime loading
 - Upgrade and uninstall cleanup abort before changing files when an existing managed path is outside the current scope; the manifest is preserved so the operation can be retried with the original path arguments
 - Custom `--agents-home` installs warn when runtime priority is not enabled, and validation reports when the runtime-selected skill root differs from the installed root

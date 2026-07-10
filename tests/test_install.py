@@ -383,6 +383,102 @@ def test_merge_config_invalid_existing_toml_does_not_backup_or_write(tmp_path: P
     assert list(tmp_path.glob("config.toml.*.bak")) == []
 
 
+def test_uninstall_config_plan_removes_only_unchanged_installer_values(tmp_path: Path) -> None:
+    codex_home = tmp_path / ".codex"
+    config = codex_home / "config.toml"
+    config.parent.mkdir(parents=True)
+    config.write_text(
+        """
+# user-owned config
+[automation]
+mode = "active"
+user_setting = "keep"
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    merge_plan = install.prepare_config_merge(REPO_ROOT / "config.toml", config)
+    install.apply_config_merge(merge_plan, dry_run=False)
+    merged = config.read_text(encoding="utf-8").replace("hooks = true", "hooks = false")
+    config.write_text(merged, encoding="utf-8")
+
+    removal_plan = install.prepare_config_removal(codex_home, {"config_merge": merge_plan[3]})
+    install.apply_config_removal(removal_plan, dry_run=False)
+
+    remaining = tomllib.loads(config.read_text(encoding="utf-8"))
+    assert "model_instructions_file" not in remaining
+    assert remaining["features"]["hooks"] is False
+    assert remaining["automation"] == {"mode": "active", "user_setting": "keep"}
+    assert removal_plan[3] is False
+
+
+def test_config_ownership_survives_idempotent_reinstall(tmp_path: Path) -> None:
+    codex_home = tmp_path / ".codex"
+    config = codex_home / "config.toml"
+
+    first = install.prepare_config_merge(REPO_ROOT / "config.toml", config)
+    install.apply_config_merge(first, dry_run=False)
+    second = install.prepare_config_merge(REPO_ROOT / "config.toml", config, first[3])
+    install.apply_config_merge(second, dry_run=False)
+
+    owned_paths = {tuple(entry["path"]) for entry in second[3]["added_values"]}
+    assert ("model_instructions_file",) in owned_paths
+    assert second[3]["existed_before"] is False
+
+    removal = install.prepare_config_removal(codex_home, {"config_merge": second[3]})
+    install.apply_config_removal(removal, dry_run=False)
+
+    if config.exists():
+        assert "model_instructions_file" not in tomllib.loads(config.read_text(encoding="utf-8"))
+
+
+def test_uninstall_legacy_manifest_preserves_referenced_instruction(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    codex_home = project / ".codex"
+    codex_home.mkdir(parents=True)
+    config = codex_home / "config.toml"
+    config.write_text("model_instructions_file = './instruction.ctf.md'\n", encoding="utf-8")
+    instruction = codex_home / "instruction.ctf.md"
+    instruction.write_text("managed instruction\n", encoding="utf-8")
+    manifest = install.manifest_path(codex_home)
+    manifest.write_text(json.dumps({"managed_paths": [str(instruction)]}), encoding="utf-8")
+
+    subprocess.run(
+        [sys.executable, str(INSTALL_PATH), "--project-home", str(project), "--uninstall"],
+        cwd=REPO_ROOT,
+        check=True,
+        stdout=subprocess.DEVNULL,
+    )
+
+    assert instruction.exists()
+    assert config.exists()
+    assert not manifest.exists()
+
+
+def test_uninstall_invalid_config_fails_before_deleting_managed_files(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    codex_home = project / ".codex"
+    codex_home.mkdir(parents=True)
+    config = codex_home / "config.toml"
+    config.write_text("[automation\n", encoding="utf-8")
+    instruction = codex_home / "instruction.ctf.md"
+    instruction.write_text("managed instruction\n", encoding="utf-8")
+    manifest = install.manifest_path(codex_home)
+    manifest.write_text(json.dumps({"managed_paths": [str(instruction)]}), encoding="utf-8")
+
+    result = subprocess.run(
+        [sys.executable, str(INSTALL_PATH), "--project-home", str(project), "--uninstall"],
+        cwd=REPO_ROOT,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+    assert result.returncode != 0
+    assert config.exists()
+    assert instruction.exists()
+    assert manifest.exists()
+
+
 def test_install_invalid_existing_toml_fails_before_writes_or_cleanup(tmp_path: Path) -> None:
     codex_home = tmp_path / "custom-codex"
     agents_home = tmp_path / "custom-agents"
@@ -580,6 +676,8 @@ def test_manifest_tracks_config_as_merged_file(tmp_path: Path) -> None:
     assert payload["skills_paths"]["skills_root"] == str(agents_home / "skills")
     assert payload["custom_skill_dirs_enabled"] is False
     assert payload["log_root"] == str(codex_home / "logs" / "codex-redteam")
+    assert payload["manifest_schema_version"] == 2
+    assert payload["config_merge"]["path"] == str(codex_home / "config.toml")
 
 
 def test_project_home_resolves_dot_codex_and_dot_agents(tmp_path: Path) -> None:
@@ -770,6 +868,30 @@ def test_project_home_uninstall_preserves_user_agents_content(tmp_path: Path) ->
     )
 
     assert agents_file.read_text(encoding="utf-8") == "user guidance\n"
+
+
+def test_project_home_uninstall_removes_managed_config_reference(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+
+    for _ in range(2):
+        subprocess.run(
+            [sys.executable, str(INSTALL_PATH), "--project-home", str(project)],
+            cwd=REPO_ROOT,
+            check=True,
+            stdout=subprocess.DEVNULL,
+        )
+
+    subprocess.run(
+        [sys.executable, str(INSTALL_PATH), "--project-home", str(project), "--uninstall"],
+        cwd=REPO_ROOT,
+        check=True,
+        stdout=subprocess.DEVNULL,
+    )
+
+    config = project / ".codex" / "config.toml"
+    if config.exists():
+        assert "model_instructions_file" not in tomllib.loads(config.read_text(encoding="utf-8"))
+    assert not (project / ".codex" / "instruction.ctf.md").exists()
 
 
 def test_project_home_install_accepts_custom_agents_home(tmp_path: Path) -> None:

@@ -140,6 +140,8 @@ python scripts/install.py --project-home /path/to/project --agents-home /path/to
 - 版本升级干净，同时不触碰用户自己的文件
 - `config.toml` 使用合并而不是覆盖；已有用户配置会保留，实际修改已有配置前会创建 `config.toml.YYYYMMDDHHMMSS.bak` 备份
 - `config.toml` 合并使用 `tomlkit`，避免 `[[skills.config]]` 等数组表吞入本应属于 `[automation]` 的键
+- manifest 会记录安装器新增的每个 `config.toml` 值和表；卸载会先移除仍保持原值的安装器托管项，再删除被引用文件，用户修改过的值会保留
+- 对于没有字段所有权元数据的旧 manifest，如果 `config.toml` 仍引用 `instruction.ctf.md`，卸载会保留该文件，避免卸载后 Codex 配置失效
 - 已有 `config.toml` 或 `hooks.json` 非法时会在预检阶段失败，不会复制新文件，也不会清理上次安装 manifest 中记录的路径；验证器和运行时均支持带 UTF-8 BOM 的 config 与 hooks
 - 升级或卸载时，如果仍存在的托管路径超出当前清理范围，会在修改任何文件前终止并保留 manifest，用户可使用原始路径参数重试
 - 自定义 `--agents-home` 未启用运行时优先级时安装器会给出警告；验证器会报告运行时 skill 根目录是否与安装目录一致
