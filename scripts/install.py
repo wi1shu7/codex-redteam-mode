@@ -113,7 +113,8 @@ def seed_prompt_files(repo_root:Path,codex_home:Path,dry_run:bool)->None:
 def build_hooks_payload(repo_root:Path,codex_home:Path)->dict:
     src=repo_root/'templates'/'hooks.json.template'; python_cmd=sys.executable; script_dir=str(codex_home/'hooks')
     python_cmd_json=json.dumps(python_cmd)[1:-1]; script_dir_json=json.dumps(script_dir)[1:-1]
-    return json.loads(src.read_text(encoding='utf-8').replace('{{PYTHON_CMD}}', python_cmd_json).replace('{{CODEX_HOOKS_DIR}}', script_dir_json))
+    payload=json.loads(src.read_text(encoding='utf-8-sig').replace('{{PYTHON_CMD}}', python_cmd_json).replace('{{CODEX_HOOKS_DIR}}', script_dir_json))
+    return validate_hooks_payload(payload,src)
 def managed_agents_block(repo_root:Path)->str:
     body=(repo_root/'codex'/'AGENTS.md').read_text(encoding='utf-8').strip()
     return f'{AGENTS_BLOCK_START}\n{body}\n{AGENTS_BLOCK_END}\n'
@@ -146,21 +147,45 @@ def scrub_managed_hooks(payload:dict)->dict:
                 cloned=copy.deepcopy(entry); cloned['hooks']=hooks; new_entries.append(cloned)
         if new_entries: cleaned[event]=new_entries
     payload['hooks']=cleaned; return payload
-def merge_hooks_json(repo_root:Path,codex_home:Path,dry_run:bool)->None:
-    dst=codex_home/'hooks.json'; rendered=build_hooks_payload(repo_root,codex_home); info(f"merge {repo_root/'templates'/'hooks.json.template'} -> {dst}")
+def validate_hooks_payload(payload:object,source:Path)->dict:
+    if not isinstance(payload,dict): raise ValueError(f'{source} must contain a JSON object')
+    hooks_root=payload.get('hooks',{})
+    if not isinstance(hooks_root,dict): raise ValueError(f'{source} key "hooks" must contain a JSON object')
+    for event,entries in hooks_root.items():
+        if not isinstance(entries,list): raise ValueError(f'{source} hook event {event!r} must contain a JSON array')
+        for entry_index,entry in enumerate(entries):
+            if not isinstance(entry,dict): raise ValueError(f'{source} hook event {event!r} entry {entry_index} must be a JSON object')
+            hooks=entry.get('hooks')
+            if not isinstance(hooks,list): raise ValueError(f'{source} hook event {event!r} entry {entry_index} key "hooks" must contain a JSON array')
+            if not all(isinstance(hook,dict) for hook in hooks): raise ValueError(f'{source} hook event {event!r} entry {entry_index} contains a non-object hook')
+    return payload
+def load_hooks_payload(dst:Path)->dict:
+    if not dst.exists(): return {'hooks':{}}
+    try: payload=json.loads(dst.read_text(encoding='utf-8-sig'))
+    except json.JSONDecodeError as exc: raise ValueError(f'invalid hooks JSON at {dst}: {exc}') from exc
+    return validate_hooks_payload(payload,dst)
+def prepare_hooks_merge(repo_root:Path,codex_home:Path)->tuple[Path,str]:
+    dst=codex_home/'hooks.json'; rendered=build_hooks_payload(repo_root,codex_home); info(f"preflight hooks merge {repo_root/'templates'/'hooks.json.template'} -> {dst}")
+    existing=scrub_managed_hooks(load_hooks_payload(dst)); hooks_root=existing.setdefault('hooks',{})
+    for event,entries in rendered.get('hooks',{}).items(): hooks_root.setdefault(event,[]).extend(copy.deepcopy(entries))
+    validate_hooks_payload(existing,dst)
+    return dst,json.dumps(existing,ensure_ascii=False,indent=2)
+def prepare_hooks_removal(codex_home:Path)->tuple[Path,str|None]:
+    dst=codex_home/'hooks.json'; info(f'preflight managed hook removal from {dst}')
+    if not dst.exists(): return dst,None
+    payload=scrub_managed_hooks(load_hooks_payload(dst)); hooks_root=payload.get('hooks',{})
+    return dst,(json.dumps(payload,ensure_ascii=False,indent=2) if hooks_root else None)
+def apply_hooks_plan(plan:tuple[Path,str|None],dry_run:bool)->None:
+    dst,rendered=plan
     if dry_run: return
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    existing=json.loads(dst.read_text(encoding='utf-8')) if dst.exists() else {'hooks':{}}
-    existing=scrub_managed_hooks(existing); hooks_root=existing.setdefault('hooks',{})
-    for event, entries in rendered.get('hooks',{}).items(): hooks_root.setdefault(event,[]).extend(copy.deepcopy(entries))
-    dst.write_text(json.dumps(existing, ensure_ascii=False, indent=2), encoding='utf-8')
+    if rendered is None:
+        if dst.exists(): dst.unlink()
+        return
+    dst.parent.mkdir(parents=True,exist_ok=True); dst.write_text(rendered,encoding='utf-8')
+def merge_hooks_json(repo_root:Path,codex_home:Path,dry_run:bool)->None:
+    plan=prepare_hooks_merge(repo_root,codex_home); info(f'apply hooks merge -> {plan[0]}'); apply_hooks_plan(plan,dry_run)
 def remove_managed_hooks(codex_home:Path,dry_run:bool)->None:
-    dst=codex_home/'hooks.json'
-    if not dst.exists(): return
-    info(f'remove managed hooks from {dst}')
-    if not dry_run:
-        payload=scrub_managed_hooks(json.loads(dst.read_text(encoding='utf-8'))); hooks_root=payload.get('hooks',{})
-        dst.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding='utf-8') if hooks_root else dst.unlink()
+    plan=prepare_hooks_removal(codex_home); info(f'apply managed hook removal -> {plan[0]}'); apply_hooks_plan(plan,dry_run)
 def run_validate(repo_root:Path,codex_home:Path,dry_run:bool)->None:
     if dry_run: return
     subprocess.run([sys.executable, str(repo_root/'scripts'/'validate.py'), '--codex-home', str(codex_home)], check=True)
@@ -202,12 +227,13 @@ def upgrade_cleanup(codex_home:Path,agents_home:Path,agents_file:Path,default_ta
         if key in seen or key in protected: continue
         seen.add(key); remove_path(target,dry_run)
 def uninstall(repo_root:Path,codex_home:Path,agents_home:Path,agents_file:Path,dry_run:bool)->None:
+    hooks_plan=prepare_hooks_removal(codex_home)
     targets=load_manifest_targets(codex_home) or managed_targets(repo_root,codex_home,agents_home)
     for target in targets: remove_path(target,dry_run)
     for target in legacy_cleanup_targets(codex_home,agents_home): remove_path(target,dry_run)
     remove_agents_block(agents_file,dry_run)
     if agents_file != codex_home/'AGENTS.md': remove_agents_block(codex_home/'AGENTS.md',dry_run)
-    remove_managed_hooks(codex_home,dry_run); remove_path(manifest_path(codex_home),dry_run)
+    info(f'apply managed hook removal -> {hooks_plan[0]}'); apply_hooks_plan(hooks_plan,dry_run); remove_path(manifest_path(codex_home),dry_run)
 def main()->None:
     parser=argparse.ArgumentParser(description='Install codex-redteam-optin-mode into a Codex Home or project.'); parser.add_argument('--codex-home', help='Codex Home/profile directory. AGENTS.md here is global guidance; use --project-home for project AGENTS.md.'); parser.add_argument('--agents-home', help='Agents directory whose skills are installed under PATH/skills.'); parser.add_argument('--project-home', help='Project root. Installs Codex files under PATH/.codex, skills under PATH/.agents by default, and AGENTS.md at PATH/AGENTS.md.'); parser.add_argument('--log-root', help='Automation log root recorded in the install manifest.'); parser.add_argument('--enable-custom-skill-dirs', action='store_true', help='Allow runtime skill lookup to use manifest-recorded custom skill directories directly.'); parser.add_argument('--dry-run', action='store_true', help='Preview operations without writing files.'); parser.add_argument('--uninstall', action='store_true', help='Remove managed files, hooks, and AGENTS.md blocks.'); args=parser.parse_args()
     if args.project_home and args.codex_home: parser.error('--project-home cannot be combined with --codex-home')
@@ -222,6 +248,7 @@ def main()->None:
     if args.uninstall: uninstall(repo_root,codex_home,agents_home,agents_file,args.dry_run); good('uninstall complete'); return
     info(f"preflight config merge {repo_root/'config.toml'} -> {codex_home/'config.toml'}")
     config_plan=prepare_config_merge(repo_root/'config.toml', codex_home/'config.toml')
+    hooks_plan=prepare_hooks_merge(repo_root,codex_home)
     upgrade_cleanup(codex_home,agents_home,agents_file,current_targets,args.dry_run)
     if agents_file != codex_home/'AGENTS.md': remove_agents_block(codex_home/'AGENTS.md',args.dry_run)
     copy_file(repo_root/'instruction.ctf.md', codex_home/'instruction.ctf.md', args.dry_run); info(f"merge {repo_root/'config.toml'} -> {codex_home/'config.toml'}"); apply_config_merge(config_plan,args.dry_run); seed_prompt_files(repo_root,codex_home,args.dry_run); upsert_agents_file(repo_root,agents_file,args.dry_run)
@@ -234,5 +261,5 @@ def main()->None:
     copy_tree(repo_root/'codex'/'automation', codex_home/'automation', args.dry_run)
     copy_tree(repo_root/'codex'/'session_patcher', codex_home/'session_patcher', args.dry_run)
     for skill_dir in repo_skill_dirs(repo_root): copy_skill_md(skill_dir, agents_home/'skills'/skill_dir.name, args.dry_run)
-    merge_hooks_json(repo_root,codex_home,args.dry_run); write_manifest(codex_home,agents_file,agents_home,current_targets,log_root,args.enable_custom_skill_dirs,args.dry_run); run_validate(repo_root,codex_home,args.dry_run); good('install complete')
+    info(f'apply hooks merge -> {hooks_plan[0]}'); apply_hooks_plan(hooks_plan,args.dry_run); write_manifest(codex_home,agents_file,agents_home,current_targets,log_root,args.enable_custom_skill_dirs,args.dry_run); run_validate(repo_root,codex_home,args.dry_run); good('install complete')
 if __name__=='__main__': main()

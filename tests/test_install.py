@@ -206,6 +206,114 @@ def test_install_invalid_existing_toml_fails_before_writes_or_cleanup(tmp_path: 
     assert manifest.exists()
 
 
+def test_merge_hooks_json_accepts_utf8_bom_and_preserves_user_hooks(tmp_path: Path) -> None:
+    codex_home = tmp_path / ".codex"
+    codex_home.mkdir()
+    hooks_path = codex_home / "hooks.json"
+    user_payload = {
+        "hooks": {
+            "SessionStart": [
+                {
+                    "matcher": "startup",
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": "user-command",
+                            "statusMessage": "User hook",
+                        }
+                    ],
+                }
+            ]
+        }
+    }
+    hooks_path.write_bytes(b"\xef\xbb\xbf" + json.dumps(user_payload).encode("utf-8"))
+
+    install.merge_hooks_json(REPO_ROOT, codex_home, dry_run=False)
+
+    merged = json.loads(hooks_path.read_text(encoding="utf-8"))
+    commands = [
+        hook["command"]
+        for entries in merged["hooks"].values()
+        for entry in entries
+        for hook in entry["hooks"]
+    ]
+    assert "user-command" in commands
+    assert any("session-start-context.py" in command for command in commands)
+
+
+@pytest.mark.parametrize(
+    "hooks_bytes",
+    [
+        b"{invalid json",
+        json.dumps({"hooks": []}).encode("utf-8"),
+    ],
+)
+@pytest.mark.parametrize("extra_args", [(), ("--dry-run",)])
+def test_install_invalid_hooks_fails_before_writes_or_cleanup(
+    tmp_path: Path,
+    hooks_bytes: bytes,
+    extra_args: tuple[str, ...],
+) -> None:
+    codex_home = tmp_path / "custom-codex"
+    agents_home = tmp_path / "custom-agents"
+    codex_home.mkdir()
+    hooks_path = codex_home / "hooks.json"
+    hooks_path.write_bytes(hooks_bytes)
+    stale = codex_home / "stale-managed.txt"
+    stale.write_text("old managed file\n", encoding="utf-8")
+    manifest = codex_home / "redteam-install-manifest.json"
+    manifest.write_text(json.dumps({"managed_paths": [str(stale)]}), encoding="utf-8")
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(INSTALL_PATH),
+            "--codex-home",
+            str(codex_home),
+            "--agents-home",
+            str(agents_home),
+            *extra_args,
+        ],
+        cwd=REPO_ROOT,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+    assert result.returncode != 0
+    assert hooks_path.read_bytes() == hooks_bytes
+    assert stale.exists()
+    assert manifest.exists()
+    assert not (codex_home / "config.toml").exists()
+    assert not (codex_home / "instruction.ctf.md").exists()
+    assert not (codex_home / "AGENTS.md").exists()
+    assert not (codex_home / "hooks").exists()
+    assert not agents_home.exists()
+
+
+def test_uninstall_invalid_hooks_fails_before_deleting_managed_files(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    codex_home = project / ".codex"
+    codex_home.mkdir(parents=True)
+    hooks_path = codex_home / "hooks.json"
+    hooks_path.write_text("{invalid json", encoding="utf-8")
+    managed = codex_home / "instruction.ctf.md"
+    managed.write_text("managed\n", encoding="utf-8")
+    manifest = codex_home / "redteam-install-manifest.json"
+    manifest.write_text(json.dumps({"managed_paths": [str(managed)]}), encoding="utf-8")
+
+    result = subprocess.run(
+        [sys.executable, str(INSTALL_PATH), "--project-home", str(project), "--uninstall"],
+        cwd=REPO_ROOT,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+    assert result.returncode != 0
+    assert hooks_path.exists()
+    assert managed.exists()
+    assert manifest.exists()
+
+
 def test_upgrade_cleanup_preserves_config_from_previous_manifest(tmp_path: Path) -> None:
     codex_home = tmp_path / ".codex"
     agents_home = tmp_path / ".agents"
