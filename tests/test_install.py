@@ -69,6 +69,17 @@ def _run_hook_script(script: Path, payload: dict, env: dict[str, str]) -> subpro
     )
 
 
+def _run_hook_script_bytes(script: Path, payload: dict, env: dict[str, str]) -> subprocess.CompletedProcess[bytes]:
+    return subprocess.run(
+        [sys.executable, "-B", str(script)],
+        input=json.dumps(payload).encode("ascii"),
+        cwd=REPO_ROOT,
+        env=env,
+        check=True,
+        capture_output=True,
+    )
+
+
 @pytest.mark.parametrize("event", ["SessionStart", "UserPromptSubmit"])
 def test_context_hook_output_matches_codex_wire_schema(event: str) -> None:
     rendered = json.loads(emitter.emit_hook_json(event, "context"))
@@ -92,6 +103,49 @@ def test_role_phase_is_used_only_inside_additional_context() -> None:
     specific = rendered["hookSpecificOutput"]
     assert set(specific) == {"hookEventName", "additionalContext"}
     assert "Current phase: web" in specific["additionalContext"]
+
+
+def test_hook_json_is_ascii_safe_and_round_trips_unicode() -> None:
+    context = "中文上下文 🚀"
+    rendered = emitter.emit_hook_json("SessionStart", context)
+
+    assert rendered.isascii()
+    decoded = rendered.encode("gbk").decode("utf-8")
+    assert json.loads(decoded)["hookSpecificOutput"]["additionalContext"] == context
+
+
+def test_hook_stdout_is_utf8_safe_under_gbk(tmp_path: Path) -> None:
+    session_id = "gbk-session"
+    temp_dir = tmp_path / "temp"
+    env = {
+        **os.environ,
+        "TEMP": str(temp_dir),
+        "TMP": str(temp_dir),
+        "PYTHONIOENCODING": "gbk",
+        "CODEX_REDTEAM_AUTOMATION_MODE": "plan-only",
+        "NO_COLOR": "1",
+    }
+    transcript = tmp_path / "sessions" / "current.jsonl"
+
+    started = _run_hook_script_bytes(
+        SESSION_START_HOOK,
+        {"session_id": session_id, "transcript_path": str(transcript), "source": "startup"},
+        env,
+    )
+    assert started.stdout.isascii()
+    started_context = json.loads(started.stdout.decode("utf-8"))["hookSpecificOutput"]["additionalContext"]
+    assert "预防性指令" in started_context
+
+    _run_hook_script_bytes(PROMPT_HOOK, {"session_id": session_id, "prompt": "/redteam light"}, env)
+    routed = _run_hook_script_bytes(
+        PROMPT_HOOK,
+        {"session_id": session_id, "prompt": "检查登录接口的认证风险"},
+        env,
+    )
+    assert routed.stdout.isascii()
+    routed_context = json.loads(routed.stdout.decode("utf-8"))["hookSpecificOutput"]["additionalContext"]
+    assert "[mode:redteam-light]" in routed_context
+    assert "登录接口" in routed_context
 
 
 @pytest.mark.parametrize(

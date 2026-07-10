@@ -50,4 +50,4 @@ def emit_hook_json(
         }
     }
 
-    return json.dumps(payload, ensure_ascii=False)
+    return json.dumps(payload, ensure_ascii=True)
