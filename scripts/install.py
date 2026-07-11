@@ -22,6 +22,7 @@ def info(msg:str)->None: print(color(f'[INFO] {msg}','36'))
 def warn(msg:str)->None: print(color(f'[WARN] {msg}','33'))
 def good(msg:str)->None: print(color(f'[OK] {msg}','32'))
 def manifest_path(codex_home:Path)->Path: return codex_home/'redteam-install-manifest.json'
+def transaction_path(codex_home:Path)->Path: return codex_home/'redteam-install-transaction.json'
 def normalize_path(value:str|Path)->Path: return Path(value).expanduser().resolve(strict=False)
 def detect_codex_home(explicit:str|None)->Path: return normalize_path(explicit or os.environ.get('CODEX_HOME') or (Path.home()/'.codex'))
 def detect_agents_home(explicit:str|None)->Path: return normalize_path(explicit or (Path.home()/'.agents'))
@@ -329,40 +330,97 @@ def preflight_cleanup_targets(targets:list[Path],operation:str)->None:
     for target in outside: print(f'  {target}',file=sys.stderr)
     print('Re-run with the original --agents-home value. No files were changed.',file=sys.stderr)
     raise SystemExit(2)
+def _validated_absolute_paths(raw_paths:object,source:Path,label:str,field:str='managed_paths')->list[Path]:
+    if not isinstance(raw_paths,list): raise ManifestValidationError(f'invalid {label} at {source}: {field} must be a JSON array')
+    targets=[]
+    for raw in raw_paths:
+        if not isinstance(raw,str) or not raw.strip(): raise ManifestValidationError(f'invalid {label} at {source}: {field} entries must be non-empty strings')
+        try: target=Path(raw).expanduser()
+        except (TypeError,ValueError,OSError) as exc: raise ManifestValidationError(f'invalid {label} at {source}: invalid managed path {raw!r}') from exc
+        if not target.is_absolute(): raise ManifestValidationError(f'invalid {label} at {source}: managed path must be absolute: {raw!r}')
+        targets.append(target.resolve(strict=False))
+    return targets
+def validate_manifest_payload(data:object,source:Path)->dict:
+    if not isinstance(data,dict): raise ManifestValidationError(f'invalid install manifest at {source}: expected a JSON object')
+    raw_targets=data.get('managed_paths')
+    _validated_absolute_paths(raw_targets,source,'install manifest')
+    return data
 def load_manifest_data(codex_home:Path)->dict:
     manifest=manifest_path(codex_home)
     if not manifest.exists(): return {}
     try: data=json.loads(manifest.read_text(encoding='utf-8'))
     except (json.JSONDecodeError,OSError) as exc: raise ManifestValidationError(f'invalid install manifest at {manifest}: {exc}') from exc
-    if not isinstance(data,dict): raise ManifestValidationError(f'invalid install manifest at {manifest}: expected a JSON object')
-    raw_targets=data.get('managed_paths')
-    if not isinstance(raw_targets,list): raise ManifestValidationError(f'invalid install manifest at {manifest}: managed_paths must be a JSON array')
-    for raw in raw_targets:
-        if not isinstance(raw,str) or not raw.strip(): raise ManifestValidationError(f'invalid install manifest at {manifest}: managed_paths entries must be non-empty strings')
-        try: target=Path(raw).expanduser()
-        except (TypeError,ValueError,OSError) as exc: raise ManifestValidationError(f'invalid install manifest at {manifest}: invalid managed path {raw!r}') from exc
-        if not target.is_absolute(): raise ManifestValidationError(f'invalid install manifest at {manifest}: managed path must be absolute: {raw!r}')
-    return data
+    return validate_manifest_payload(data,manifest)
 def load_manifest_targets(codex_home:Path)->list[Path]:
     manifest=manifest_path(codex_home); data=load_manifest_data(codex_home)
     if not data: return []
-    targets=[]
-    for raw in data['managed_paths']:
-        try:
-            target=Path(raw).expanduser()
-            targets.append(target.resolve(strict=False))
-        except (TypeError,ValueError,OSError) as exc: raise ManifestValidationError(f'invalid install manifest at {manifest}: invalid managed path {raw!r}') from exc
-    return targets
+    return _validated_absolute_paths(data['managed_paths'],manifest,'install manifest')
 def build_manifest_payload(codex_home:Path,agents_file:Path,agents_home:Path,targets:list[Path],log_root:Path,custom_skill_dirs_enabled:bool,config_merge:dict|None=None)->dict:
     skills_root=agents_home/'skills'
     skill_dirs=[str(skills_root/path.name) for path in repo_skill_dirs(Path(__file__).resolve().parents[1])]
     return {'name':APP_NAME,'version':APP_VERSION,'manifest_schema_version':2,'installed_at':datetime.now().isoformat(timespec='seconds'),'managed_paths':[str(path) for path in targets],'merged_files':[str(agents_file),str(codex_home/'hooks.json'),str(codex_home/'config.toml')],'skills_paths':{'skills_root':str(skills_root),'skill_dirs':skill_dirs},'custom_skill_dirs_enabled':bool(custom_skill_dirs_enabled),'log_root':str(log_root),'config_merge':config_merge or {'path':str((codex_home/'config.toml').resolve(strict=False)),'existed_before':True,'added_values':[],'added_tables':[]}}
-def prepare_manifest(codex_home:Path,agents_file:Path,agents_home:Path,targets:list[Path],log_root:Path,custom_skill_dirs_enabled:bool,dry_run:bool,config_merge:dict|None=None)->tuple[Path,Path]|None:
+def atomic_write_json(path:Path,payload:dict)->None:
+    temporary=path.with_name(f'{path.name}.tmp')
+    path.parent.mkdir(parents=True,exist_ok=True)
+    temporary.write_text(json.dumps(payload,ensure_ascii=False,indent=2),encoding='utf-8')
+    os.replace(temporary,path)
+def validate_transaction_payload(data:object,source:Path)->dict:
+    if not isinstance(data,dict): raise ManifestValidationError(f'invalid install transaction at {source}: expected a JSON object')
+    if data.get('transaction_schema_version')!=1: raise ManifestValidationError(f'invalid install transaction at {source}: unsupported transaction_schema_version')
+    if data.get('state') not in {'prepared','deployed','validation_failed','deployment_failed'}: raise ManifestValidationError(f'invalid install transaction at {source}: invalid state')
+    previous=data.get('previous_manifest')
+    if previous is not None: validate_manifest_payload(previous,source)
+    validate_manifest_payload(data.get('candidate_manifest'),source)
+    _validated_absolute_paths(data.get('previous_targets'),source,'install transaction','previous_targets')
+    _validated_absolute_paths(data.get('candidate_targets'),source,'install transaction','candidate_targets')
+    return data
+def load_transaction_data(codex_home:Path)->dict:
+    transaction=transaction_path(codex_home)
+    if not transaction.exists(): return {}
+    try: data=json.loads(transaction.read_text(encoding='utf-8'))
+    except (json.JSONDecodeError,OSError) as exc: raise ManifestValidationError(f'invalid install transaction at {transaction}: {exc}') from exc
+    return validate_transaction_payload(data,transaction)
+def transaction_targets(codex_home:Path)->list[Path]:
+    transaction=transaction_path(codex_home); data=load_transaction_data(codex_home)
+    if not data: return []
+    targets=[]
+    targets.extend(_validated_absolute_paths(data['previous_targets'],transaction,'install transaction','previous_targets'))
+    targets.extend(_validated_absolute_paths(data['candidate_targets'],transaction,'install transaction','candidate_targets'))
+    return _unique_cleanup_targets(targets)
+def begin_transaction(codex_home:Path,agents_home:Path,previous_manifest:dict,candidate_manifest:dict,previous_targets:list[Path],candidate_targets:list[Path],dry_run:bool)->None:
+    if dry_run: return
+    now=datetime.now().isoformat(timespec='seconds')
+    payload={
+        'name':APP_NAME,
+        'transaction_schema_version':1,
+        'state':'prepared',
+        'started_at':now,
+        'updated_at':now,
+        'codex_home':str(codex_home),
+        'agents_home':str(agents_home),
+        'previous_manifest':previous_manifest or None,
+        'candidate_manifest':candidate_manifest,
+        'previous_targets':[str(path) for path in previous_targets],
+        'candidate_targets':[str(path) for path in candidate_targets],
+    }
+    info(f'write pending install transaction {transaction_path(codex_home)}'); atomic_write_json(transaction_path(codex_home),payload)
+def update_transaction(codex_home:Path,state:str,error:BaseException|None=None,dry_run:bool=False)->None:
+    if dry_run: return
+    transaction=transaction_path(codex_home); data=load_transaction_data(codex_home)
+    if not data: return
+    data['state']=state; data['updated_at']=datetime.now().isoformat(timespec='seconds')
+    if error is not None: data['error']=f'{error.__class__.__name__}: {error}'
+    elif 'error' in data: del data['error']
+    atomic_write_json(transaction,data)
+def remove_transaction(codex_home:Path,dry_run:bool)->None: remove_path(transaction_path(codex_home),dry_run)
+def prepare_manifest_payload(codex_home:Path,payload:dict,dry_run:bool)->tuple[Path,Path]|None:
     manifest=manifest_path(codex_home); candidate=manifest.with_name(f'{manifest.name}.tmp'); info(f'prepare manifest {candidate}')
     if dry_run: return None
-    payload=build_manifest_payload(codex_home,agents_file,agents_home,targets,log_root,custom_skill_dirs_enabled,config_merge)
     manifest.parent.mkdir(parents=True,exist_ok=True); candidate.write_text(json.dumps(payload,ensure_ascii=False,indent=2),encoding='utf-8')
     return manifest,candidate
+def prepare_manifest(codex_home:Path,agents_file:Path,agents_home:Path,targets:list[Path],log_root:Path,custom_skill_dirs_enabled:bool,dry_run:bool,config_merge:dict|None=None)->tuple[Path,Path]|None:
+    payload=build_manifest_payload(codex_home,agents_file,agents_home,targets,log_root,custom_skill_dirs_enabled,config_merge)
+    return prepare_manifest_payload(codex_home,payload,dry_run)
 def commit_manifest(plan:tuple[Path,Path]|None,dry_run:bool)->None:
     if dry_run or plan is None: return
     manifest,candidate=plan; info(f'commit manifest {manifest}'); os.replace(candidate,manifest)
@@ -372,16 +430,20 @@ def discard_manifest(plan:tuple[Path,Path]|None)->None:
     if candidate.exists(): candidate.unlink()
 def write_manifest(codex_home:Path,agents_file:Path,agents_home:Path,targets:list[Path],log_root:Path,custom_skill_dirs_enabled:bool,dry_run:bool,config_merge:dict|None=None)->None:
     plan=prepare_manifest(codex_home,agents_file,agents_home,targets,log_root,custom_skill_dirs_enabled,dry_run,config_merge); commit_manifest(plan,dry_run)
-def upgrade_cleanup(codex_home:Path,agents_home:Path,agents_file:Path,default_targets:list[Path],dry_run:bool)->None:
-    previous_targets=load_manifest_targets(codex_home); cleanup_targets=previous_targets or default_targets; protected={str(agents_file), str(codex_home/'AGENTS.md'), str(codex_home/'hooks.json'), str(codex_home/'config.toml')}
+def prepare_upgrade_cleanup(codex_home:Path,agents_home:Path,agents_file:Path,default_targets:list[Path],pending_targets:list[Path]|None=None)->list[Path]:
+    previous_targets=load_manifest_targets(codex_home); recorded_targets=_unique_cleanup_targets(previous_targets + list(pending_targets or [])); cleanup_targets=recorded_targets or default_targets; protected={str(agents_file), str(codex_home/'AGENTS.md'), str(codex_home/'hooks.json'), str(codex_home/'config.toml')}
     cleanup_targets=_unique_cleanup_targets(cleanup_targets + legacy_cleanup_targets(codex_home,agents_home),protected)
     preflight_cleanup_targets(cleanup_targets,'upgrade cleanup')
+    return cleanup_targets
+def apply_upgrade_cleanup(cleanup_targets:list[Path],dry_run:bool)->None:
     for target in cleanup_targets: remove_path(target,dry_run)
+def upgrade_cleanup(codex_home:Path,agents_home:Path,agents_file:Path,default_targets:list[Path],dry_run:bool)->None:
+    apply_upgrade_cleanup(prepare_upgrade_cleanup(codex_home,agents_home,agents_file,default_targets,transaction_targets(codex_home)),dry_run)
 def uninstall(repo_root:Path,codex_home:Path,agents_home:Path,agents_file:Path,dry_run:bool)->None:
-    manifest_data=load_manifest_data(codex_home)
-    config_plan=prepare_config_removal(codex_home,manifest_data)
+    manifest_data=load_manifest_data(codex_home); pending_data=load_transaction_data(codex_home); ownership_data=pending_data.get('candidate_manifest') if pending_data else manifest_data
+    config_plan=prepare_config_removal(codex_home,ownership_data or manifest_data)
     hooks_plan=prepare_hooks_removal(codex_home)
-    targets=_unique_cleanup_targets((load_manifest_targets(codex_home) or managed_targets(repo_root,codex_home,agents_home)) + legacy_cleanup_targets(codex_home,agents_home))
+    recorded_targets=_unique_cleanup_targets(load_manifest_targets(codex_home) + transaction_targets(codex_home)); targets=_unique_cleanup_targets((recorded_targets or managed_targets(repo_root,codex_home,agents_home)) + legacy_cleanup_targets(codex_home,agents_home))
     instruction=(codex_home/'instruction.ctf.md').resolve(strict=False)
     if config_plan[3]:
         targets=[target for target in targets if target.resolve(strict=False)!=instruction]
@@ -391,7 +453,7 @@ def uninstall(repo_root:Path,codex_home:Path,agents_home:Path,agents_file:Path,d
     for target in targets: remove_path(target,dry_run)
     remove_agents_block(agents_file,dry_run)
     if agents_file != codex_home/'AGENTS.md': remove_agents_block(codex_home/'AGENTS.md',dry_run)
-    info(f'apply managed hook removal -> {hooks_plan[0]}'); apply_hooks_plan(hooks_plan,dry_run); remove_path(manifest_path(codex_home),dry_run)
+    info(f'apply managed hook removal -> {hooks_plan[0]}'); apply_hooks_plan(hooks_plan,dry_run); remove_path(manifest_path(codex_home),dry_run); remove_transaction(codex_home,dry_run)
 def main()->None:
     parser=argparse.ArgumentParser(description='Install codex-redteam-optin-mode into a Codex Home or project.'); parser.add_argument('--codex-home', help='Codex Home/profile directory. AGENTS.md here is global guidance; use --project-home for project AGENTS.md.'); parser.add_argument('--agents-home', help='Skill installation destination. For a custom runtime directory, also use --enable-custom-skill-dirs.'); parser.add_argument('--project-home', help='Project root. Installs Codex files under PATH/.codex, skills under PATH/.agents by default, and AGENTS.md at PATH/AGENTS.md.'); parser.add_argument('--log-root', help='Automation log root recorded in the install manifest.'); parser.add_argument('--enable-custom-skill-dirs', action='store_true', help='Prioritize the manifest-recorded custom skill directory at runtime.'); parser.add_argument('--dry-run', action='store_true', help='Preview operations without writing files.'); parser.add_argument('--uninstall', action='store_true', help='Remove managed files, hooks, and AGENTS.md blocks.'); args=parser.parse_args()
     if args.project_home and args.codex_home: parser.error('--project-home cannot be combined with --codex-home')
@@ -411,27 +473,37 @@ def main()->None:
         for location in runtime_state_locations(): info(f'  {location}')
         good('uninstall complete'); return
     info(f"preflight config merge {repo_root/'config.toml'} -> {codex_home/'config.toml'}")
-    previous_manifest=load_manifest_data(codex_home)
-    config_plan=prepare_config_merge(repo_root/'config.toml', codex_home/'config.toml',previous_manifest.get('config_merge'))
+    previous_manifest=load_manifest_data(codex_home); pending_data=load_transaction_data(codex_home); ownership_data=pending_data.get('candidate_manifest') if pending_data else previous_manifest
+    config_plan=prepare_config_merge(repo_root/'config.toml', codex_home/'config.toml',ownership_data.get('config_merge') if ownership_data else None)
     hooks_plan=prepare_hooks_merge(repo_root,codex_home)
-    upgrade_cleanup(codex_home,agents_home,agents_file,current_targets,args.dry_run)
-    if agents_file != codex_home/'AGENTS.md': remove_agents_block(codex_home/'AGENTS.md',args.dry_run)
-    copy_file(repo_root/'instruction.ctf.md', codex_home/'instruction.ctf.md', args.dry_run); info(f"merge {repo_root/'config.toml'} -> {codex_home/'config.toml'}"); apply_config_merge(config_plan,args.dry_run); seed_prompt_files(repo_root,codex_home,args.dry_run); upsert_agents_file(repo_root,agents_file,args.dry_run)
-    copy_file(repo_root/'codex'/'hooks'/'session-start-context.py', codex_home/'hooks'/'session-start-context.py', args.dry_run)
-    copy_file(repo_root/'codex'/'hooks'/'hook-security-context-hook.py', codex_home/'hooks'/'hook-security-context-hook.py', args.dry_run)
-    copy_file(repo_root/'codex'/'hooks'/'redteam_state.py', codex_home/'hooks'/'redteam_state.py', args.dry_run)
-    copy_tree(repo_root/'codex'/'hooks'/'core', codex_home/'hooks'/'core', args.dry_run)
-    copy_tree(repo_root/'codex'/'router', codex_home/'router', args.dry_run)
-    copy_tree(repo_root/'codex'/'orchestrator', codex_home/'orchestrator', args.dry_run)
-    copy_tree(repo_root/'codex'/'automation', codex_home/'automation', args.dry_run)
-    copy_tree(repo_root/'codex'/'session_patcher', codex_home/'session_patcher', args.dry_run)
-    for skill_dir in repo_skill_dirs(repo_root): copy_skill_md(skill_dir, agents_home/'skills'/skill_dir.name, args.dry_run)
-    info(f'apply hooks merge -> {hooks_plan[0]}'); apply_hooks_plan(hooks_plan,args.dry_run)
-    manifest_plan=prepare_manifest(codex_home,agents_file,agents_home,current_targets,log_root,args.enable_custom_skill_dirs,args.dry_run,config_plan[3])
-    try: run_validate(repo_root,codex_home,args.dry_run,manifest_plan[1] if manifest_plan else None)
-    except BaseException:
-        discard_manifest(manifest_plan); raise
-    commit_manifest(manifest_plan,args.dry_run); good('install complete')
+    pending_targets=transaction_targets(codex_home); previous_targets=_unique_cleanup_targets(load_manifest_targets(codex_home)+pending_targets)
+    cleanup_targets=prepare_upgrade_cleanup(codex_home,agents_home,agents_file,current_targets,pending_targets)
+    candidate_manifest=build_manifest_payload(codex_home,agents_file,agents_home,current_targets,log_root,args.enable_custom_skill_dirs,config_plan[3])
+    begin_transaction(codex_home,agents_home,previous_manifest,candidate_manifest,previous_targets,current_targets,args.dry_run)
+    manifest_plan=None; deployed=False
+    try:
+        apply_upgrade_cleanup(cleanup_targets,args.dry_run)
+        if agents_file != codex_home/'AGENTS.md': remove_agents_block(codex_home/'AGENTS.md',args.dry_run)
+        copy_file(repo_root/'instruction.ctf.md', codex_home/'instruction.ctf.md', args.dry_run); info(f"merge {repo_root/'config.toml'} -> {codex_home/'config.toml'}"); apply_config_merge(config_plan,args.dry_run); seed_prompt_files(repo_root,codex_home,args.dry_run); upsert_agents_file(repo_root,agents_file,args.dry_run)
+        copy_file(repo_root/'codex'/'hooks'/'session-start-context.py', codex_home/'hooks'/'session-start-context.py', args.dry_run)
+        copy_file(repo_root/'codex'/'hooks'/'hook-security-context-hook.py', codex_home/'hooks'/'hook-security-context-hook.py', args.dry_run)
+        copy_file(repo_root/'codex'/'hooks'/'redteam_state.py', codex_home/'hooks'/'redteam_state.py', args.dry_run)
+        copy_tree(repo_root/'codex'/'hooks'/'core', codex_home/'hooks'/'core', args.dry_run)
+        copy_tree(repo_root/'codex'/'router', codex_home/'router', args.dry_run)
+        copy_tree(repo_root/'codex'/'orchestrator', codex_home/'orchestrator', args.dry_run)
+        copy_tree(repo_root/'codex'/'automation', codex_home/'automation', args.dry_run)
+        copy_tree(repo_root/'codex'/'session_patcher', codex_home/'session_patcher', args.dry_run)
+        for skill_dir in repo_skill_dirs(repo_root): copy_skill_md(skill_dir, agents_home/'skills'/skill_dir.name, args.dry_run)
+        info(f'apply hooks merge -> {hooks_plan[0]}'); apply_hooks_plan(hooks_plan,args.dry_run)
+        deployed=True; update_transaction(codex_home,'deployed',dry_run=args.dry_run)
+        manifest_plan=prepare_manifest_payload(codex_home,candidate_manifest,args.dry_run)
+        run_validate(repo_root,codex_home,args.dry_run,manifest_plan[1] if manifest_plan else None)
+        commit_manifest(manifest_plan,args.dry_run); remove_transaction(codex_home,args.dry_run); good('install complete')
+    except BaseException as exc:
+        discard_manifest(manifest_plan)
+        try: update_transaction(codex_home,'validation_failed' if deployed else 'deployment_failed',error=exc,dry_run=args.dry_run)
+        except Exception as transaction_exc: warn(f'could not update pending transaction: {transaction_exc}')
+        raise
 if __name__=='__main__':
     try: main()
     except ManifestValidationError as exc:

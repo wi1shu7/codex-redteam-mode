@@ -1240,6 +1240,102 @@ def test_validation_failure_keeps_previous_manifest(tmp_path: Path, monkeypatch:
 
     assert manifest.read_text(encoding="utf-8") == original
     assert not manifest.with_name(f"{manifest.name}.tmp").exists()
+    transaction = install.transaction_path(codex_home)
+    transaction_data = json.loads(transaction.read_text(encoding="utf-8"))
+    assert transaction_data["state"] == "validation_failed"
+    assert transaction_data["previous_manifest"] == json.loads(original)
+    assert transaction_data["candidate_manifest"]["version"] == install.APP_VERSION
+
+
+def test_retry_reconciles_pending_transaction_and_commits_manifest(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    codex_home = tmp_path / "codex-home"
+    agents_home = tmp_path / "agents-home"
+    codex_home.mkdir()
+    stale = codex_home / "stale-managed.txt"
+    stale.write_text("stale\n", encoding="utf-8")
+    manifest = install.manifest_path(codex_home)
+    manifest.write_text(json.dumps({"managed_paths": [str(stale)]}), encoding="utf-8")
+    argv = [str(INSTALL_PATH), "--codex-home", str(codex_home), "--agents-home", str(agents_home)]
+    original_run_validate = install.run_validate
+
+    def fail_validation(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("validation failed")
+
+    monkeypatch.setattr(install, "run_validate", fail_validation)
+    monkeypatch.setattr(sys, "argv", argv)
+    with pytest.raises(RuntimeError, match="validation failed"):
+        install.main()
+
+    transaction = install.transaction_path(codex_home)
+    assert transaction.exists()
+    assert (agents_home / "skills" / "redteam-cve-validation" / "SKILL.md").exists()
+
+    monkeypatch.setattr(install, "run_validate", original_run_validate)
+    install.main()
+
+    assert not transaction.exists()
+    committed = json.loads(manifest.read_text(encoding="utf-8"))
+    assert committed["version"] == install.APP_VERSION
+    assert str(agents_home / "skills" / "redteam-cve-validation") in committed["managed_paths"]
+
+
+def test_uninstall_cleans_previous_and_pending_candidate_targets(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    codex_home = tmp_path / "codex-home"
+    agents_home = tmp_path / "agents-home"
+    codex_home.mkdir()
+    previous_target = codex_home / "old-managed.txt"
+    previous_target.write_text("old\n", encoding="utf-8")
+    manifest = install.manifest_path(codex_home)
+    manifest.write_text(json.dumps({"managed_paths": [str(previous_target)]}), encoding="utf-8")
+    argv = [str(INSTALL_PATH), "--codex-home", str(codex_home), "--agents-home", str(agents_home)]
+
+    def fail_validation(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("validation failed")
+
+    monkeypatch.setattr(install, "run_validate", fail_validation)
+    monkeypatch.setattr(sys, "argv", argv)
+    with pytest.raises(RuntimeError, match="validation failed"):
+        install.main()
+
+    candidate_skill = agents_home / "skills" / "redteam-cve-validation" / "SKILL.md"
+    assert candidate_skill.exists()
+    assert install.transaction_path(codex_home).exists()
+
+    install._SAFE_ROOTS.clear()
+    install._SAFE_ROOTS.extend([codex_home, agents_home, REPO_ROOT])
+    install.uninstall(REPO_ROOT, codex_home, agents_home, codex_home / "AGENTS.md", dry_run=False)
+
+    assert not candidate_skill.exists()
+    assert not manifest.exists()
+    assert not install.transaction_path(codex_home).exists()
+
+
+def test_invalid_pending_transaction_fails_before_install_changes(tmp_path: Path) -> None:
+    codex_home = tmp_path / "codex-home"
+    agents_home = tmp_path / "agents-home"
+    codex_home.mkdir()
+    marker = codex_home / "user-marker.txt"
+    marker.write_text("keep\n", encoding="utf-8")
+    install.transaction_path(codex_home).write_text("{invalid json", encoding="utf-8")
+
+    result = subprocess.run(
+        [sys.executable, str(INSTALL_PATH), "--codex-home", str(codex_home), "--agents-home", str(agents_home)],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 2
+    assert "invalid install transaction" in result.stderr
+    assert marker.read_text(encoding="utf-8") == "keep\n"
+    assert not (codex_home / "instruction.ctf.md").exists()
+    assert not agents_home.exists()
 
 
 def test_project_home_install_writes_under_dot_dirs(tmp_path: Path) -> None:
