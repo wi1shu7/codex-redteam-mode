@@ -878,7 +878,12 @@ def test_installed_hook_commands_support_windows_shell_metacharacters(tmp_path: 
     special_name = "home & (qa) ! ^ %TEMP% ' 中文 with spaces"
     codex_home = tmp_path / f"codex {special_name}"
     agents_home = tmp_path / f"agents {special_name}"
-    env = {**os.environ, "CODEX_HOME": str(codex_home), "NO_COLOR": "1"}
+    env = {
+        **os.environ,
+        "CODEX_HOME": str(codex_home),
+        "NO_COLOR": "1",
+        "PYTHONIOENCODING": "cp1252",
+    }
 
     subprocess.run(
         [

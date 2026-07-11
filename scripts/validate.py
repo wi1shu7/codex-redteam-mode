@@ -16,6 +16,13 @@ from pathlib import Path
 from typing import List, Tuple
 
 
+def configure_stdio() -> None:
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure:
+            reconfigure(encoding="utf-8", errors="backslashreplace")
+
+
 REQUIRED_CODEX_FILES = [
     "hooks/session-start-context.py",
     "hooks/hook-security-context-hook.py",
@@ -357,4 +364,5 @@ def main() -> None:
         sys.exit(1)
 
 if __name__ == "__main__":
+    configure_stdio()
     main()

@@ -17,6 +17,10 @@ AGENTS_BLOCK_START='<!-- codex-redteam-optin-mode:start -->'; AGENTS_BLOCK_END='
 SESSION_STATUS='Loading session mode context'; PROMPT_STATUS='Checking mode-gated offensive routing'
 _MISSING=object()
 class ManifestValidationError(ValueError): pass
+def configure_stdio()->None:
+    for stream in (sys.stdout,sys.stderr):
+        reconfigure=getattr(stream,'reconfigure',None)
+        if reconfigure: reconfigure(encoding='utf-8',errors='backslashreplace')
 def color(text:str,code:str)->str: return text if os.environ.get('NO_COLOR') else f'\033[{code}m{text}\033[0m'
 def info(msg:str)->None: print(color(f'[INFO] {msg}','36'))
 def warn(msg:str)->None: print(color(f'[WARN] {msg}','33'))
@@ -505,6 +509,7 @@ def main()->None:
         except Exception as transaction_exc: warn(f'could not update pending transaction: {transaction_exc}')
         raise
 if __name__=='__main__':
+    configure_stdio()
     try: main()
     except ManifestValidationError as exc:
         print(f'ERROR: {exc}',file=sys.stderr); raise SystemExit(2)
