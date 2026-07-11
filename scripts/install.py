@@ -206,6 +206,11 @@ def copy_skill_md(src_dir:Path,dst_dir:Path,dry_run:bool)->None:
     if dry_run: return
     dst_dir.mkdir(parents=True, exist_ok=True)
     import shutil; shutil.copy2(src_file, dst_dir/'SKILL.md')
+def managed_prompt_targets(repo_root:Path,codex_home:Path,owned_targets:list[Path])->list[Path]:
+    src_dir=repo_root/'codex'/'prompts'; dst_dir=codex_home/'prompts'
+    if not src_dir.exists(): return []
+    owned={str(path.resolve(strict=False)) for path in owned_targets}
+    return [dst_dir/src.name for src in src_dir.glob('*.md') if not (dst_dir/src.name).exists() or str((dst_dir/src.name).resolve(strict=False)) in owned]
 def seed_prompt_files(repo_root:Path,codex_home:Path,dry_run:bool)->None:
     src_dir=repo_root/'codex'/'prompts'; dst_dir=codex_home/'prompts'
     if not src_dir.exists(): return
@@ -481,6 +486,7 @@ def main()->None:
     config_plan=prepare_config_merge(repo_root/'config.toml', codex_home/'config.toml',ownership_data.get('config_merge') if ownership_data else None)
     hooks_plan=prepare_hooks_merge(repo_root,codex_home)
     pending_targets=transaction_targets(codex_home); previous_targets=_unique_cleanup_targets(load_manifest_targets(codex_home)+pending_targets)
+    current_targets.extend(managed_prompt_targets(repo_root,codex_home,previous_targets))
     cleanup_targets=prepare_upgrade_cleanup(codex_home,agents_home,agents_file,current_targets,pending_targets)
     candidate_manifest=build_manifest_payload(codex_home,agents_file,agents_home,current_targets,log_root,args.enable_custom_skill_dirs,config_plan[3])
     begin_transaction(codex_home,agents_home,previous_manifest,candidate_manifest,previous_targets,current_targets,args.dry_run)

@@ -27,6 +27,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Existing manifests now fail closed when their JSON structure or managed paths are invalid, before any installation, cleanup, or uninstall changes occur.
 - Upgrades now write a pending install transaction before cleanup. Failed deployment targets remain recoverable, while retry and uninstall reconcile the union of previous and candidate targets; successful validation atomically commits the formal manifest and removes the transaction.
 - Installed `hooks.json` validation now uses BOM-tolerant UTF-8 decoding, matching installer behavior and the documented BOM support.
+- Prompt files created by the installer are now recorded in the manifest and removed on uninstall, while pre-existing same-name user prompts remain unowned and preserved across reinstall and uninstall.
 
 ### Changed
 

@@ -1418,6 +1418,36 @@ def test_project_home_install_writes_under_dot_dirs(tmp_path: Path) -> None:
     assert payload["log_root"] == str(project / ".codex" / "logs" / "codex-redteam")
 
 
+def test_prompt_seeds_track_only_installer_created_files_across_reinstall(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    prompts_dir = project / ".codex" / "prompts"
+    prompts_dir.mkdir(parents=True)
+    user_prompt = prompts_dir / "Reverse.md"
+    user_prompt.write_text("user-owned prompt\n", encoding="utf-8")
+    command = [sys.executable, str(INSTALL_PATH), "--project-home", str(project)]
+
+    for _ in range(2):
+        subprocess.run(command, cwd=REPO_ROOT, check=True, stdout=subprocess.DEVNULL)
+        payload = json.loads(
+            (project / ".codex" / "redteam-install-manifest.json").read_text(encoding="utf-8")
+        )
+        assert str(prompts_dir / "do_special.md") in payload["managed_paths"]
+        assert str(prompts_dir / "system-prompt.md") in payload["managed_paths"]
+        assert str(user_prompt) not in payload["managed_paths"]
+        assert user_prompt.read_text(encoding="utf-8") == "user-owned prompt\n"
+
+    subprocess.run(
+        [*command, "--uninstall"],
+        cwd=REPO_ROOT,
+        check=True,
+        stdout=subprocess.DEVNULL,
+    )
+
+    assert user_prompt.read_text(encoding="utf-8") == "user-owned prompt\n"
+    assert not (prompts_dir / "do_special.md").exists()
+    assert not (prompts_dir / "system-prompt.md").exists()
+
+
 def test_project_home_migrates_old_dot_codex_agents_block(tmp_path: Path) -> None:
     project = tmp_path / "project"
     old_agents = project / ".codex" / "AGENTS.md"
