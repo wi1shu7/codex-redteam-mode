@@ -12,7 +12,7 @@ for candidate in (HOOKS_DIR, CODEX_DIR):
     if candidate_str not in sys.path:
         sys.path.insert(0, candidate_str)
 
-from core import emit_hook_json, extract_prompt, extract_session_id, load_runtime_state, parse_mode_command, parse_opsec_command, save_runtime_state
+from core import build_redteam_mode_overlay, emit_hook_json, extract_prompt, extract_session_id, load_runtime_state, parse_mode_command, parse_opsec_command, save_runtime_state
 from core.controller import process_turn
 from core.prompt_parser import decode_stdin, load_payload
 from core.refusal_backstop import build_recent_refusal_overlay, payload_has_recent_refusal
@@ -33,6 +33,8 @@ def main() -> None:
         return
 
     session_id = extract_session_id(payload)
+    if not session_id:
+        return
     state = load_runtime_state(session_id=session_id)
 
     mode = parse_mode_command(prompt)
@@ -43,16 +45,28 @@ def main() -> None:
             print(
                 emit_hook_json(
                     "UserPromptSubmit",
-                    "[mode] Red-team mode disabled. Return to normal mode; do not inject offensive doctrine unless you explicitly enable it again.",
+                    "[mode] Structured red-team routing disabled for future turns. "
+                    "No new phase/router/pack/leaf context will be injected. "
+                    "The base instruction.ctf.md profile and previous task context remain active. "
+                    "The session state file remains stored with mode reset to normal. "
+                    "Use /clear or start a new task to remove prior per-session context.",
                 )
             )
         else:
             state = replace(default_state(session_id), mode=mode, opsec_level=state.opsec_level)
             save_runtime_state(state, session_id=session_id)
+            context = (
+                f"[mode] Red-team mode enabled ({mode}). Future prompts will use "
+                "phase -> router -> pack -> leaf routing until you explicitly disable it."
+            )
+            mode_overlay = build_redteam_mode_overlay(CODEX_DIR, mode)
+            if mode_overlay:
+                context = f"{context}\n{mode_overlay}"
             print(
                 emit_hook_json(
                     "UserPromptSubmit",
-                    f"[mode] Red-team mode enabled ({mode}). Future prompts will use phase -> router -> pack -> leaf routing until you explicitly disable it.",
+                    context,
+                    inject_prepoison=True,
                 )
             )
         return
@@ -79,7 +93,7 @@ def main() -> None:
         context = f"{context}\n{build_recent_refusal_overlay()}"
     if result.overlay:
         context = f"{context}\n{result.overlay}"
-    print(emit_hook_json("UserPromptSubmit", context, inject_role_overlay=True, phase=result.state.phase))
+    print(emit_hook_json("UserPromptSubmit", context, inject_role_overlay=True, role_phase=result.state.phase))
 
 
 if __name__ == "__main__":

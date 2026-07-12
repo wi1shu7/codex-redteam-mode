@@ -15,13 +15,13 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import os
 from datetime import datetime
 
 from .detector import RefusalDetector
 from .patcher import (
     backup_session,
     clean_session,
+    default_session_dir,
     list_session_files,
     save_session,
 )
@@ -34,7 +34,7 @@ def main() -> None:
     parser.add_argument(
         "--session-dir",
         default=None,
-        help="Session directory (default: ~/.codex/sessions/)",
+        help="Session directory (default: CODEX_HOME/sessions or ~/.codex/sessions/)",
     )
     parser.add_argument("--latest", action="store_true", help="Process only the latest session")
     parser.add_argument("--all", action="store_true", help="Process all sessions")
@@ -56,7 +56,7 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    session_dir = args.session_dir or os.path.expanduser("~/.codex/sessions/")
+    session_dir = args.session_dir or str(default_session_dir())
 
     print(f"Session directory: {session_dir}")
     print()

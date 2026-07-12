@@ -4,20 +4,38 @@ All notable changes to the Codex Red Team Opt-In Mode project.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [1.1.1] - 2026-07-09
-
-### Added
-
-- Added `--project-home PATH` for project-level installs. It writes Codex runtime/config files to `<project>/.codex` and, by default, skill cards to `<project>/.agents/skills`.
-- `--project-home` can be combined with `--agents-home PATH` to place skill cards in a custom agents directory while keeping project Codex config under `<project>/.codex`.
-- Documented the Python 3.11+ requirement because the installer uses the standard-library `tomllib` parser.
+## [1.1.7] - 2026-07-11
 
 ### Fixed
 
-- Merged `config.toml` structurally instead of overwriting user-owned config, preserving existing MCP servers, model providers, project trust entries, automation mode, and other user settings.
-- Protected `config.toml` during upgrade cleanup by tracking it as a merged file instead of a managed disposable path.
-- Created timestamped `config.toml.YYYYMMDDHHMMSS.bak` backups before changing an existing config file. Dry-run, no-op merges, and invalid TOML do not create backups or modify files.
-- Accepted UTF-8 BOM-prefixed existing config files during merge.
+- Runtime manifest discovery now checks the current Codex Home first, so custom `--codex-home` installs work even when hooks do not inherit `CODEX_HOME`.
+- Installer `config.toml` merging now preflights TOML parsing before cleanup or file copies, preventing partial installs when an existing config is invalid.
+- Installer paths are normalized to absolute paths before hook rendering, manifest writes, runtime lookup, or cleanup.
+- Existing `hooks.json` files are BOM-tolerant and fully validated before install or uninstall changes begin, preventing partial operations on invalid hook configuration.
+- Session backstop lookup now searches the transcript's complete session root, so the previous session can be found across date directories without crossing Codex profiles.
+- Runtime and validation now accept UTF-8 BOM-prefixed `config.toml` files, preventing valid automation settings from silently falling back to `plan-only`.
+- Upgrade and uninstall now preflight all existing managed paths against the current cleanup scope before changing files. Out-of-scope paths preserve the manifest and return a non-zero exit so the operation can be retried with the original `--agents-home`.
+- Custom `--agents-home` installs now warn when `--enable-custom-skill-dirs` is missing, and validation reports both the installed and runtime-selected skill roots.
+- `SessionStart` and `UserPromptSubmit` hook output now matches Codex's strict context-hook schema. Internal route phase is used for role overlays but is no longer serialized as an unsupported wire field.
+- `SessionStart` now preserves the existing mode for `resume` and `compact` sources, while `startup`, `clear`, missing, and unknown sources reset safely to normal.
+- Hook JSON output is now ASCII-safe, preventing Windows GBK/CP936 stdout encoding from corrupting the UTF-8 hook protocol or Chinese context.
+- Installer manifests now record the exact `config.toml` values and tables added by the installer. Uninstall removes only unchanged installer-owned values before deleting `instruction.ctf.md`; legacy manifests preserve the file when configuration ownership cannot be proven.
+- Red-team light/full activation and resumed or compacted red-team sessions now inject the complete `Reverse.md` supplemental context directly. Normal startup remains free of this mode-level overlay, and subsequent task prompts continue to use the existing per-turn `phase -> router -> pack -> leaf` routing.
+- Normal `SessionStart` no longer injects the additional prepoison or refusal backstop. Light/full activation injects the existing prepoison once, resume/compact restores it only for active red-team sessions, and disabling the mode now accurately describes the base profile and retained task history.
+- Session state now persists under `$CODEX_HOME/redteam-mode/state/sessions` (falling back to `~/.codex`) instead of `TEMP`/`TMP`; session memory uses the sibling `memory` directory, missing session IDs no longer create shared `global.json` state, and uninstall intentionally preserves these runtime files.
+- Windows hook definitions now invoke Base64-encoded PowerShell commands, preventing spaces, Unicode, quotes, and `cmd.exe` metacharacters in Python or Codex Home paths from breaking `SessionStart` and `UserPromptSubmit`; POSIX hooks retain shell-safe argument joining.
+- Existing manifests now fail closed when their JSON structure or managed paths are invalid, before any installation, cleanup, or uninstall changes occur.
+- Upgrades now write a pending install transaction before cleanup. Failed deployment targets remain recoverable, while retry and uninstall reconcile the union of previous and candidate targets; successful validation atomically commits the formal manifest and removes the transaction.
+- Installed `hooks.json` validation now uses BOM-tolerant UTF-8 decoding, matching installer behavior and the documented BOM support.
+- Prompt files created by the installer are now recorded in the manifest and removed on uninstall, while pre-existing same-name user prompts remain unowned and preserved across reinstall and uninstall.
+
+### Changed
+
+- Added a GitHub Actions test matrix for Windows, Ubuntu, and macOS using Python 3.11, including platform-specific hook command execution with shell metacharacter paths.
+- Clarified `--codex-home` as a Codex Home/profile-level install whose `AGENTS.md` is global guidance, while `--project-home` writes project-level `AGENTS.md`.
+- Documented manifest lookup and upgrade cleanup as relative to the selected Codex Home instead of hard-coding `~/.codex`.
+- Relative install arguments are resolved against the install command's working directory and stored as absolute paths.
+- Installation examples now pair shared skill directories with `--enable-custom-skill-dirs` and show the matching uninstall scope.
 
 ## [1.0.0] - 2026-06-28
 
@@ -139,7 +157,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Managed incremental installer for Python and PowerShell.
 - Reference method layer and technology routing layer from three external skill repositories.
 
-[1.1.1]: https://github.com/chAng-L19/codex-redteam-mode/releases/tag/v1.1.1
+[1.1.7]: https://github.com/chAng-L19/codex-redteam-mode/releases/tag/v1.1.7
 [1.0.0]: https://github.com/chAng-L19/codex-redteam-mode/releases/tag/v1.0.0
 [0.6.0]: https://github.com/chAng-L19/codex-redteam-mode/releases/tag/v0.6.0
 [0.5.0]: https://github.com/chAng-L19/codex-redteam-mode/releases/tag/v0.5.0

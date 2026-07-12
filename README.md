@@ -2,20 +2,20 @@
 
 [中文说明](./README_ZH.md)
 
-**Current release:** v1.1.1
+**Current release:** v1.1.7
 
-> Normal by default. Red-team mode is opt-in; once enabled, automation starts automatically by default.
+> Structured red-team routing is off by default and must be enabled explicitly. The base `instruction.ctf.md` security profile remains active in every mode.
 
-A lightweight, evidence-driven red team runtime/configuration layer for Codex. Ordinary coding, documentation, and research tasks stay in normal mode unless the user explicitly enables red-team mode. When enabled, Loop Runtime SKILL.md domain cards declare scope, boundaries, and exit evidence — not instructions.
+A lightweight, evidence-driven red team runtime/configuration layer for Codex. In normal mode, the base `instruction.ctf.md` profile remains active while additional prepoison context, structured `phase -> router -> pack -> leaf` routing, and the automation loop stay off. Explicitly enabling red-team mode activates those additional runtime layers.
 
 ## Why This Project
 
 Two common pitfalls in AI-assisted security work:
 
-1. **Pollution of normal operations** — persistent red-team hints or system prompts bleed into everyday coding, causing refusals or unwanted behavior.
+1. **Uncontrolled structured routing** — phase, pack, automation, or refusal-backstop context activates without an explicit mode command.
 2. **Context bloat** — heavy injection of offensive doctrine increases token cost without improving routing quality.
 
-This project solves both: **normal mode stays normal**, and red-team mode must be explicitly enabled. When enabled, SKILL.md Loop Runtime domain cards declare scope, boundaries, and exit evidence, while the 5-Phase engine drives evidence-based progression — not a monolithic prompt dump.
+This project keeps the structured runtime opt-in: normal mode retains the base `instruction.ctf.md` profile but does not inject additional prepoison, refusal-backstop, phase, pack, or automation context. When explicitly enabled, SKILL.md Loop Runtime domain cards declare scope, boundaries, and exit evidence, while the 5-Phase engine drives evidence-based progression.
 
 ## Core Features
 
@@ -26,7 +26,7 @@ This project solves both: **normal mode stays normal**, and red-team mode must b
 - **SKILL.md Loop Runtime domain cards** — pure Markdown `scope-not-instruct` format: each card has `## Domain` (scope declaration), `## Boundaries` (forbidden actions), `## Pivot Hints` (direction changes), `## Exit Evidence` (required artifacts and minimum attempts) — no YAML, no JSON
 - **Graded feedback gates** — four-level gate decisions: `pass` (advance), `soft_fail` (retry/adjust), `pivot` (change path), `blocked` (halt for human)
 - **Dedicated routing layer** — regex-based router engine (Chinese + English patterns), fine-grained sub-routers per domain (5 web, 4 AD, 6 crypto, 5 network, 3 mobile), external skill adapters (ACS/hackskills/qiushi)
-- **Lightweight hooks** — activation engine, context prepoison, intent engine, loop engine, phase detector, semantic fallback, state manager, refusal backstop
+- **Lightweight hooks** — activation engine, context prepoison, intent engine, loop engine, phase detector, semantic fallback, state manager, refusal backstop, strict Codex wire output, and resume-safe session state
 - **Session patcher** — two-tier refusal detector (strong phrases + weak openers in Chinese + English), JSONL session cleaner with auto-backup and optional AI-powered rewrite
 - **Bounded Loop Runtime** — each decision exposes a trigger, feedback gate, and exit condition so the agent can adjust pace before advancing
 - **Artifact/gate-based progression** — prove one path before expanding, distinguish facts from assumptions
@@ -68,7 +68,11 @@ This project solves both: **normal mode stays normal**, and red-team mode must b
 
 ### Python (cross-platform)
 
-Requires Python 3.11+ because the installer uses the standard-library `tomllib` parser for safe `config.toml` merging.
+Requires Python 3.11+ and the dependencies in `requirements.txt`. The installer uses `tomlkit` for round-trip `config.toml` merging.
+
+```bash
+python -m pip install -r requirements.txt
+```
 
 ```bash
 python scripts/install.py
@@ -78,9 +82,11 @@ python scripts/install.py
 
 | Option | Description |
 |--------|-------------|
-| `--project-home PATH` | Project-level install root. Writes Codex files to `PATH/.codex` and skills to `PATH/.agents/skills` unless `--agents-home` is set |
-| `--agents-home PATH` | Custom agents directory for skill cards (default: `~/.agents`, or `PATH/.agents` with `--project-home`) |
-| `--codex-home PATH` | Compatibility option for a custom Codex home directory (default: `~/.codex`). Do not combine with `--project-home` |
+| `--project-home PATH` | Project-level install root. Writes Codex files to `PATH/.codex`, skills to `PATH/.agents/skills` unless `--agents-home` is set, and project guidance to `PATH/AGENTS.md` |
+| `--agents-home PATH` | Skill installation destination (default: `~/.agents`, or `PATH/.agents` with `--project-home`). For a custom runtime directory, also use `--enable-custom-skill-dirs` |
+| `--codex-home PATH` | Custom installation target for Codex Home/profile files (default: `~/.codex`). Writes `PATH/AGENTS.md` as global guidance; use `--project-home` for project guidance. Do not combine with `--project-home` |
+| `--log-root PATH` | Custom automation log root recorded in the install manifest |
+| `--enable-custom-skill-dirs` | Prioritize the manifest-recorded custom skill directory at runtime |
 | `--dry-run` | Preview all operations without writing any files |
 | `--uninstall` | Remove all managed files, hooks, and AGENTS.md blocks |
 
@@ -88,31 +94,68 @@ python scripts/install.py
 # Preview before install
 python scripts/install.py --dry-run
 
-# Custom install location
+# Custom Codex Home/profile install
 python scripts/install.py --codex-home /opt/codex/home
 
-# Project-level install
+# Project-level install, including project AGENTS.md
 python scripts/install.py --project-home /path/to/project
 
 # Project-level install with shared skills directory
-python scripts/install.py --project-home /path/to/project --agents-home /path/to/agents
+python scripts/install.py --project-home /path/to/project --agents-home /path/to/agents --enable-custom-skill-dirs
+
+# Project-level install with custom runtime log root
+python scripts/install.py --project-home /path/to/project --log-root /path/to/logs
 
 # Full uninstall
 python scripts/install.py --uninstall
+
+# Uninstall a project install that used a shared skills directory
+python scripts/install.py --project-home /path/to/project --agents-home /path/to/agents --uninstall
+```
+
+Use `--project-home /path/to/project` for project-level installs. Do not use `--codex-home /path/to/project/.codex` as a substitute: that installs into a Codex Home/profile, so `AGENTS.md` is treated as global guidance for that profile rather than as project-root guidance.
+
+`--agents-home` controls where skill cards are installed. When it points to a custom shared directory, add `--enable-custom-skill-dirs` to make the runtime prioritize that directory. Repeat the original `--project-home`, `--codex-home`, and `--agents-home` scope when upgrading or uninstalling; cleanup stops before changing files if existing managed paths fall outside the current scope.
+
+### Runtime State Location
+
+Red-team session state and memory are not stored in the install manifest or project directory. At runtime they use:
+
+```text
+$CODEX_HOME/redteam-mode/state/sessions/<session_id>.json
+$CODEX_HOME/redteam-mode/state/memory/<session_id>.json
+```
+
+When `CODEX_HOME` is unset, `$CODEX_HOME` above means `~/.codex`. The `--codex-home` installer option only selects where files are installed; for a custom install, it is recommended to launch Codex with the same environment value:
+
+```bash
+CODEX_HOME=/opt/codex/home codex
+```
+
+Running without the matching environment variable is supported, but runtime state then falls back to `~/.codex`. State files are keyed by Codex session ID, so unrelated sessions are not expected to collide.
+
+`--project-home` does not make runtime state project-local. Project installs also use the active `CODEX_HOME`, or `~/.codex` when it is unset. Different Codex config profiles under the same `CODEX_HOME` share this state root while remaining separated by session ID.
+
+Uninstall removes managed project/plugin files but intentionally keeps session state and memory. If manual cleanup is desired, remove one of these roots after confirming the active Codex Home:
+
+```text
+$CODEX_HOME/redteam-mode/state
+~/.codex/redteam-mode/state
 ```
 
 ### What the Installer Does
 
-1. **Upgrade cleanup** — reads the manifest from the previous install (`~/.codex/redteam-install-manifest.json`), removes all old tracked paths, plus known legacy remnants (`legacy-redteam-hook.py`, `red-team-command-doctrine-old`)
-2. **Core files** — copies `instruction.ctf.md` and merges `config.toml` into the selected Codex home (`~/.codex/` or `<project>/.codex/`)
-3. **Hooks** — deploys `session-start-context.py`, `hook-security-context-hook.py`, `redteam_state.py`, and `core/` to `~/.codex/hooks/`
-4. **Subsystems** — deploys `router/`, `orchestrator/`, `automation/`, and `session_patcher/` to `~/.codex/`
-5. **Skill packs** — deploys all 35 SKILL.md domain cards from `agents/skills/` to the selected agents home (only `SKILL.md` is copied per skill directory)
-6. **Seed prompts** — copies prompt files to `~/.codex/prompts/` (skips existing)
-7. **Merge hooks.json** — strips old managed hooks, then injects the current `SessionStart` and `UserPromptSubmit` hooks (preserves user-defined hooks)
-8. **Merge AGENTS.md** — injects or updates a managed block (`<!-- codex-redteam-optin-mode:start -->`) into `~/.codex/AGENTS.md` (preserves user content outside the block)
-9. **Write manifest** — records all managed paths to `~/.codex/redteam-install-manifest.json` for future upgrade/cleanup tracking
-10. **Validate** — runs `scripts/validate.py` to verify every subsystem file is in place
+1. **Configuration preflight** — parses and plans both `config.toml` and `hooks.json` merges before copying or cleaning any files, so invalid existing configuration leaves the install untouched
+2. **Upgrade cleanup** — reads the formal manifest and any pending install transaction, preflights their combined managed targets against the current cleanup scope, then removes old/incomplete targets plus known legacy remnants
+3. **Core files** — copies `instruction.ctf.md` and merges `config.toml` into the selected Codex Home (`~/.codex/`, custom `--codex-home`, or `<project>/.codex/`)
+4. **Hooks** — deploys `session-start-context.py`, `hook-security-context-hook.py`, `redteam_state.py`, and `core/` to the selected Codex Home's `hooks/`
+5. **Subsystems** — deploys `router/`, `orchestrator/`, `automation/`, and `session_patcher/` to the selected Codex Home
+6. **Skill packs** — deploys all 35 SKILL.md domain cards from `agents/skills/` to the selected agents home (only `SKILL.md` is copied per skill directory)
+7. **Seed prompts** — copies prompt files to the selected Codex Home's `prompts/` directory (skips existing)
+8. **Merge hooks.json** — strips old managed hooks, then injects the current `SessionStart` and `UserPromptSubmit` hooks (preserves user-defined hooks)
+9. **Merge AGENTS.md** — injects or updates a managed block (`<!-- codex-redteam-optin-mode:start -->`) into the selected Codex Home's `AGENTS.md` as global guidance, or `<project>/AGENTS.md` with `--project-home` as project guidance (preserves user content outside the block)
+10. **Validate candidate** — runs `scripts/validate.py` against the deployed files and a candidate manifest, verifying every subsystem and the installed/runtime-selected skill roots
+11. **Commit manifest** — atomically replaces `redteam-install-manifest.json` and removes the pending transaction only after validation succeeds; failed deployments retain previous and candidate targets for retry or uninstall recovery
 
 ### Upgrade & Idempotency
 
@@ -121,8 +164,23 @@ The installer is **idempotent** — running it repeatedly is safe and will not d
 On each run, it reads the previous manifest, removes only project-managed files from the old install, then re-deploys from the current version. This means:
 - Version upgrades are clean without touching user-owned files
 - `config.toml` is merged instead of overwritten; existing user settings are preserved, and changed existing configs are backed up as `config.toml.YYYYMMDDHHMMSS.bak`
+- `config.toml` merging uses `tomlkit` so array tables such as `[[skills.config]]` do not receive keys meant for `[automation]`
+- The manifest records each `config.toml` value and table added by the installer; uninstall removes only unchanged installer-owned values before deleting referenced files, while user-modified values are preserved
+- Legacy manifests without field ownership metadata preserve `instruction.ctf.md` when `config.toml` still references it, avoiding a broken Codex profile after uninstall
+- Invalid existing `config.toml`, `hooks.json`, install manifests, or pending transactions fail during preflight before files are copied or previous paths are cleaned; UTF-8 BOM-prefixed config and hooks files are accepted consistently by installation and validation
+- POSIX hooks use shell-safe argument joining, while Windows hooks use encoded PowerShell commands so spaces, Unicode, quotes, and `cmd.exe` metacharacters in Python or Codex Home paths are not reinterpreted
+- Upgrades write a pending transaction before cleanup. Retry and uninstall reconcile the union of previous and candidate targets, and successful validation atomically commits the formal manifest and removes the transaction
+- GitHub Actions runs the full test suite on Windows, Ubuntu, and macOS with Python 3.11
+- Upgrade and uninstall cleanup abort before changing files when an existing managed path is outside the current scope; the manifest is preserved so the operation can be retried with the original path arguments
+- Custom `--agents-home` installs warn when runtime priority is not enabled, and validation reports when the runtime-selected skill root differs from the installed root
+- `SessionStart` and `UserPromptSubmit` output only Codex-supported wire fields; route phase remains inside `additionalContext` instead of being serialized as an unknown field
+- `SessionStart(source=resume|compact)` preserves the existing session mode, while `startup` and `clear` reset to normal
+- Red-team activation and `SessionStart(source=resume|compact)` inject the complete `Reverse.md` supplemental context directly; normal startup remains free of this mode-level overlay
+- Hook JSON is ASCII-safe on stdout, so Windows legacy code pages cannot corrupt the UTF-8 JSON protocol or Chinese context
+- Relative install arguments are resolved against the install command's working directory, and generated hooks and manifest fields use absolute paths
 - `copy_tree` replaces managed directories (`router/`, `orchestrator/`, etc.) wholesale; skill directories copy only `SKILL.md`
 - `AGENTS.md`, `hooks.json`, and `config.toml` are never deleted by upgrade cleanup — they use merge logic so user customizations survive
+- Project installs place the managed AGENTS block in `<project>/AGENTS.md`; old `<project>/.codex/AGENTS.md` managed blocks are migrated safely
 - Python cache files (`__pycache__`, `.pyc`, `.pyo`) are not copied into the installed runtime
 - If the manifest is missing, the installer falls back to cleaning the current target set plus known legacy paths
 
@@ -145,6 +203,8 @@ python scripts/install.py   # second run: cleanup → fresh deploy → same stat
 enable red team mode
 ```
 
+Submit mode commands as a separate prompt. Enabling `redteam-light` or `redteam-full` injects the shared prepoison and `Reverse.md` supplemental context once; each subsequent task prompt is routed independently through `phase -> router -> pack -> leaf`. Active red-team sessions inject the same supplemental context again on `resume` or `compact`.
+
 ### Disable Red Team Mode
 
 ```text
@@ -154,11 +214,13 @@ enable red team mode
 disable red team mode
 ```
 
+Disabling the mode stops future structured routing and resets the current session state file to normal without deleting it. The base `instruction.ctf.md` profile and prior task context remain active; use `/clear` or start a new task to remove prior per-session context.
+
 ### Mode Reference
 
 | Mode | Default | Use Case |
 |------|---------|----------|
-| `normal` | Yes | Coding, documentation, general research |
+| `normal` | Yes | Base `instruction.ctf.md` profile active; additional prepoison, structured routing, backstop, and automation inactive |
 | `redteam-light` | No | Targeted security analysis, planning, review |
 | `redteam-full` | No | Constrained red team workflow, operations |
 
@@ -209,8 +271,11 @@ Before planning tool use, the automation layer reads the user's local MCP/tool i
 ## Validation
 
 ```bash
+# Install test dependencies
+python -m pip install -r requirements-dev.txt
+
 # Full test suite
-python -m unittest discover -s tests -p "test_*.py"
+python -m pytest -q
 
 # Quick validation
 python scripts/validate.py

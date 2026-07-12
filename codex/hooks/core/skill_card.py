@@ -16,6 +16,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .runtime_paths import load_runtime_manifest, project_root_from_codex_dir
+
 logger = logging.getLogger(__name__)
 
 _FRONTMATTER_RE = re.compile(r"\A---\s*\n(.*?)\n---\s*\n", re.DOTALL)
@@ -229,26 +231,52 @@ def _parse_skill_md(text: str, skill_id: str) -> SkillCard:
 # Path resolution + public loader
 # ---------------------------------------------------------------------------
 
+def _has_skill_cards(skills_dir: Path) -> bool:
+    return skills_dir.is_dir() and any(skills_dir.glob("*/SKILL.md"))
+
+
+def _default_skills_dirs(codex_dir: Path) -> list[Path]:
+    project_root = project_root_from_codex_dir(codex_dir)
+    return [project_root / ".agents" / "skills", Path.home() / ".agents" / "skills"]
+
+
+def _manifest_skills_root(manifest: dict | None) -> Path | None:
+    if not manifest:
+        return None
+    skills_paths = manifest.get("skills_paths")
+    if not isinstance(skills_paths, dict):
+        return None
+    skills_root = skills_paths.get("skills_root")
+    if isinstance(skills_root, str) and skills_root.strip():
+        return Path(skills_root).expanduser()
+    return None
+
+
+def _first_existing_default_skills_dir(codex_dir: Path) -> Path | None:
+    for candidate in _default_skills_dirs(codex_dir):
+        if _has_skill_cards(candidate):
+            return candidate
+    return None
+
+
 def resolve_skills_dir(codex_dir: Path) -> Path:
-    """Resolve skills directory using 3-location fallback chain.
+    """Resolve this runtime's skill-card root.
 
-    Priority:
-    1. $AGENTS_HOME/skills (env override)
-    2. ~/.agents/skills (user-level)
-    3. <repo_root>/agents/skills (repo-level)
+    This intentionally ignores AGENTS_HOME. The installer records custom skill
+    locations in redteam-install-manifest.json so hook behavior follows the
+    install manifest instead of ambient shell state.
     """
-    agents_home = os.environ.get("AGENTS_HOME")
-    if agents_home:
-        env_skills = Path(agents_home) / "skills"
-        if env_skills.is_dir():
-            return env_skills
+    manifest = load_runtime_manifest(codex_dir)
+    manifest_root = _manifest_skills_root(manifest)
+    if manifest and manifest.get("custom_skill_dirs_enabled") and manifest_root is not None:
+        return manifest_root
 
-    user_skills = Path.home() / ".agents" / "skills"
-    if user_skills.is_dir():
-        return user_skills
-
-    repo_skills = codex_dir.parent / "agents" / "skills"
-    return repo_skills
+    default_root = _first_existing_default_skills_dir(codex_dir)
+    if default_root is not None:
+        return default_root
+    if manifest_root is not None:
+        return manifest_root
+    return _default_skills_dirs(codex_dir)[0]
 
 
 def load_skill_card(skills_dir: Path, skill_id: str) -> "SkillCard | None":

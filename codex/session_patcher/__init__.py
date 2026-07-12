@@ -7,6 +7,7 @@ from .patcher import (
     MOCK_RESPONSE,
     backup_session,
     clean_session,
+    default_session_dir,
     list_session_files,
     save_session,
 )

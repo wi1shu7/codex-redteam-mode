@@ -11,8 +11,16 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import tomllib
 from pathlib import Path
 from typing import List, Tuple
+
+
+def configure_stdio() -> None:
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure:
+            reconfigure(encoding="utf-8", errors="backslashreplace")
 
 
 REQUIRED_CODEX_FILES = [
@@ -124,8 +132,8 @@ def check_file(codex_root: Path, relative: str) -> Tuple[bool, str]:
     return False, f"  MISS {relative}"
 
 
-def _manifest_skill_dir(repo_root: Path) -> Path | None:
-    manifest = repo_root / "redteam-install-manifest.json"
+def _manifest_skill_dir(repo_root: Path, manifest_override: Path | None = None) -> Path | None:
+    manifest = manifest_override or repo_root / "redteam-install-manifest.json"
     if not manifest.exists():
         return None
     try:
@@ -142,11 +150,29 @@ def _manifest_skill_dir(repo_root: Path) -> Path | None:
     return None
 
 
-def _resolve_skills_dir(repo_root: Path, source_tree_mode: bool) -> Path | None:
+def _manifest_merged_file(codex_home: Path, filename: str, manifest_override: Path | None = None) -> Path | None:
+    manifest = manifest_override or codex_home / "redteam-install-manifest.json"
+    if not manifest.exists():
+        return None
+    try:
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    for raw in data.get("merged_files", []):
+        try:
+            path = Path(raw)
+        except TypeError:
+            continue
+        if path.name == filename:
+            return path
+    return None
+
+
+def _resolve_skills_dir(repo_root: Path, source_tree_mode: bool, manifest_override: Path | None = None) -> Path | None:
     repo_skills = repo_root / "agents" / "skills"
     if repo_skills.exists():
         return repo_skills
-    manifest_skills = _manifest_skill_dir(repo_root)
+    manifest_skills = _manifest_skill_dir(repo_root, manifest_override)
     if manifest_skills and manifest_skills.exists():
         return manifest_skills
     default_agents = Path.home() / ".agents" / "skills"
@@ -155,7 +181,21 @@ def _resolve_skills_dir(repo_root: Path, source_tree_mode: bool) -> Path | None:
     return None
 
 
-def validate_install(codex_home: Path) -> Tuple[bool, List[str]]:
+def _resolve_runtime_skills_dir(codex_root: Path, source_tree_mode: bool) -> Path | None:
+    if source_tree_mode:
+        return None
+    hooks_dir = codex_root / "hooks"
+    hooks_dir_str = str(hooks_dir)
+    if hooks_dir_str not in sys.path:
+        sys.path.insert(0, hooks_dir_str)
+    try:
+        from core.skill_card import resolve_skills_dir
+    except ImportError:
+        return None
+    return resolve_skills_dir(codex_root)
+
+
+def validate_install(codex_home: Path, manifest_override: Path | None = None) -> Tuple[bool, List[str]]:
     messages: List[str] = []
     all_ok = True
 
@@ -190,7 +230,7 @@ def validate_install(codex_home: Path) -> Tuple[bool, List[str]]:
     hooks_path = repo_root / "hooks.json"
     if hooks_path.exists():
         try:
-            data = json.loads(hooks_path.read_text(encoding="utf-8"))
+            data = json.loads(hooks_path.read_text(encoding="utf-8-sig"))
             hooks_root = data.get("hooks", {})
             hook_count = sum(
                 len(entries) for entries in hooks_root.values()
@@ -209,7 +249,7 @@ def validate_install(codex_home: Path) -> Tuple[bool, List[str]]:
             messages.append("hooks.json: MISSING")
             all_ok = False
 
-    agents_path = repo_root / "AGENTS.md"
+    agents_path = _manifest_merged_file(codex_home, "AGENTS.md", manifest_override) or repo_root / "AGENTS.md"
     if agents_path.exists():
         content = agents_path.read_text(encoding="utf-8")
         if "codex-redteam-optin-mode:start" in content:
@@ -225,15 +265,28 @@ def validate_install(codex_home: Path) -> Tuple[bool, List[str]]:
 
     config_path = repo_root / "config.toml"
     if config_path.exists():
-        messages.append("config.toml: present")
+        try:
+            tomllib.loads(config_path.read_text(encoding="utf-8-sig"))
+            messages.append("config.toml: valid")
+        except (OSError, tomllib.TOMLDecodeError) as e:
+            messages.append(f"config.toml: INVALID TOML - {e}")
+            all_ok = False
     else:
         messages.append("config.toml: MISSING")
         all_ok = False
 
-    skills_dir = _resolve_skills_dir(repo_root, source_tree_mode)
+    skills_dir = _resolve_skills_dir(repo_root, source_tree_mode, manifest_override)
     if skills_dir is not None:
         messages.append("")
-        messages.append(f"Skill runtime cards: {skills_dir}")
+        messages.append(f"Installed skill cards: {skills_dir}")
+        runtime_skills_dir = _resolve_runtime_skills_dir(codex_root, source_tree_mode)
+        if runtime_skills_dir is not None:
+            messages.append(f"Runtime skill cards: {runtime_skills_dir}")
+            if runtime_skills_dir.resolve(strict=False) != skills_dir.resolve(strict=False):
+                messages.append(
+                    "  WARN runtime is not using the installed skill root; "
+                    "reinstall with --enable-custom-skill-dirs to prioritize it"
+                )
         for skill_id in REQUIRED_SKILL_IDS:
             skill_md = skills_dir / skill_id / "SKILL.md"
             if skill_md.exists():
@@ -286,6 +339,11 @@ def main() -> None:
         required=False,
         help="Path to the codex home directory",
     )
+    parser.add_argument(
+        "--manifest",
+        required=False,
+        help="Candidate install manifest used during pre-commit validation",
+    )
     args = parser.parse_args()
 
     codex_home = Path(args.codex_home) if args.codex_home else Path.home() / ".codex"
@@ -293,7 +351,8 @@ def main() -> None:
         print(f"ERROR: codex home directory does not exist: {codex_home}")
         sys.exit(1)
 
-    all_ok, messages = validate_install(codex_home)
+    manifest_override = Path(args.manifest) if args.manifest else None
+    all_ok, messages = validate_install(codex_home, manifest_override)
     for msg in messages:
         print(msg)
 
@@ -305,4 +364,5 @@ def main() -> None:
         sys.exit(1)
 
 if __name__ == "__main__":
+    configure_stdio()
     main()

@@ -31,6 +31,7 @@ from .memory_store import (
 from .phase_detector import detect_phase
 from .target_parser import extract_target
 from .prompt_sanitizer import build_sanitizer_context
+from .runtime_paths import resolve_log_root
 from .skill_card import load_skill_card, resolve_skills_dir
 from .supplemental_prompts import build_prompt_overlay
 from .taskbook import Taskbook, refresh_taskbook, select_current_task
@@ -81,7 +82,7 @@ def _automation_mode_from_config(codex_dir: Path, redteam_mode: str) -> str:
             continue
         seen.add(key)
         try:
-            config = tomllib.loads(candidate.read_text(encoding="utf-8"))
+            config = tomllib.loads(candidate.read_text(encoding="utf-8-sig"))
         except (OSError, tomllib.TOMLDecodeError):
             continue
         features = config.get("features", {}) if isinstance(config, dict) else {}
@@ -117,7 +118,7 @@ def _mcp_inventory_paths_from_config(codex_dir: Path) -> list[Path]:
             continue
         seen.add(key)
         try:
-            config = tomllib.loads(candidate.read_text(encoding="utf-8"))
+            config = tomllib.loads(candidate.read_text(encoding="utf-8-sig"))
         except (OSError, tomllib.TOMLDecodeError):
             continue
         if not isinstance(config, dict):
@@ -560,10 +561,7 @@ def process_turn(
     if not _has_declared_exit_gate(skill_card):
         from router.mappings import ROUTER_PACK_MAP
         mapped_pack = ROUTER_PACK_MAP.get(working.leaf_skill, working.skill_pack or "")
-        # Prefer project-local agents/skills/ (most current) over installed user dir
-        pack_card = load_skill_card(codex_dir.parent / "agents" / "skills", mapped_pack)
-        if not _has_declared_exit_gate(pack_card):
-            pack_card = load_skill_card(skills_dir, mapped_pack)
+        pack_card = load_skill_card(skills_dir, mapped_pack)
         if _has_declared_exit_gate(pack_card):
             skill_card = pack_card
 
@@ -615,7 +613,7 @@ def process_turn(
         runtime_state = _build_loop_runtime_state(working, memory, target=target, automation_mode=automation_mode)
         
         # Create LoopRuntime instance pointing to session logs
-        log_root = codex_dir.parent / "logs" / (working.session_id or "default")
+        log_root = resolve_log_root(codex_dir) / (working.session_id or "default")
         mcp_paths = _mcp_inventory_paths_from_config(codex_dir)
         runtime = LoopRuntime(
             log_root=log_root,

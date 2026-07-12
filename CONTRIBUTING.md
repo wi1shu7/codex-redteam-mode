@@ -40,8 +40,9 @@ This repository is intended for **authorized penetration testing, red-team resea
 Before submitting a PR, verify:
 
 ```bash
+python -m pip install -r requirements-dev.txt
 python scripts/validate.py
-python -m unittest discover -s tests -p "test_*.py"
+python -m pytest -q
 ```
 
 ## Acknowledgements

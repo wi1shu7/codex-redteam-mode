@@ -47,8 +47,15 @@ class ChangeDetail:
     companion_lines: Optional[List[int]] = None
 
 
-def _default_session_dir() -> Path:
+def default_session_dir() -> Path:
+    codex_home = os.environ.get("CODEX_HOME")
+    if codex_home:
+        return Path(codex_home).expanduser() / "sessions"
     return Path.home() / ".codex" / "sessions"
+
+
+def _default_session_dir() -> Path:
+    return default_session_dir()
 
 
 def _extract_text_from_codex_msg(msg: Dict[str, Any]) -> str:
