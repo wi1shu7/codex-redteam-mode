@@ -20,17 +20,20 @@ from core.refusal_backstop import session_start_backstop_messages
 
 def main() -> None:
     raw = decode_stdin(sys.stdin.buffer.read())
-    session_id = None
-    transcript_path = None
-    source = ""
-    if raw.strip():
-        try:
-            payload = json.loads(raw)
-            session_id = extract_session_id(payload)
-            transcript_path = extract_transcript_path(payload)
-            source = extract_session_start_source(payload)
-        except Exception:
-            session_id = None
+    if not raw.strip():
+        return
+    try:
+        payload = json.loads(raw)
+    except Exception:
+        return
+    if not isinstance(payload, dict):
+        return
+
+    session_id = extract_session_id(payload)
+    if not session_id:
+        return
+    transcript_path = extract_transcript_path(payload)
+    source = extract_session_start_source(payload)
 
     state = load_runtime_state(session_id=session_id) if source in {"resume", "compact"} else reset_runtime_state(session_id=session_id)
     if state.mode == "normal":

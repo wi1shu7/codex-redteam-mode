@@ -26,6 +26,7 @@ def configure_stdio() -> None:
 REQUIRED_CODEX_FILES = [
     "hooks/session-start-context.py",
     "hooks/hook-security-context-hook.py",
+    "hooks/stop-refusal-hook.py",
     "hooks/redteam_state.py",
     "hooks/core/emitter.py",
     "hooks/core/phase_detector.py",

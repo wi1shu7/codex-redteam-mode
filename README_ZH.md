@@ -149,11 +149,11 @@ $CODEX_HOME/redteam-mode/state
 1. **配置预检** — 在复制或清理任何文件前，先解析并规划 `config.toml` 与 `hooks.json` 合并；已有配置非法时，安装会失败且不留下部分安装痕迹
 2. **升级清理** — 同时读取正式 manifest 和 pending install transaction，先检查两者目标并集是否属于当前清理范围，再移除旧版本、未完成安装目标及已知历史残留
 3. **核心文件** — 复制 `instruction.ctf.md`，并将 `config.toml` 合并到选定的 Codex Home（`~/.codex/`、自定义 `--codex-home` 或 `<project>/.codex/`）
-4. **Hooks** — 部署 `session-start-context.py`、`hook-security-context-hook.py`、`redteam_state.py`、`core/` 到选定 Codex Home 的 `hooks/`
+4. **Hooks** — 部署 `session-start-context.py`、`hook-security-context-hook.py`、`stop-refusal-hook.py`、`redteam_state.py`、`core/` 到选定 Codex Home 的 `hooks/`
 5. **子系统** — 部署 `router/`、`orchestrator/`、`automation/`、`session_patcher/` 到选定 Codex Home
 6. **技能包** — 部署全部 35 个 SKILL.md 领域卡从 `agents/skills/` 到选定的 agents 目录（每个 skill 目录仅复制 SKILL.md）
 7. **Seed prompts** — 复制 prompt 文件到选定 Codex Home 的 `prompts/` 目录（已有文件跳过不覆盖）
-8. **合并 hooks.json** — 清除旧的托管 hooks，注入当前版本的 `SessionStart` 和 `UserPromptSubmit` hooks（保留用户自定义 hooks）
+8. **合并 hooks.json** — 清除旧的托管 hooks，注入当前版本的 `SessionStart`、`UserPromptSubmit` 和 `Stop` hooks（保留用户自定义 hooks）
 9. **合并 AGENTS.md** — 在选定 Codex Home 的 `AGENTS.md` 中注入或更新托管块，作为全局 guidance；使用 `--project-home` 时写入 `<project>/AGENTS.md`，作为项目级 guidance（`<!-- codex-redteam-optin-mode:start -->`），块外用户内容不受影响
 10. **验证候选安装** — 使用候选 manifest 运行 `scripts/validate.py`，检查已部署文件、各子系统以及 skill 的安装目录和运行时实际选择目录
 11. **提交 manifest** — 仅在验证成功后原子替换 `redteam-install-manifest.json` 并删除 pending transaction；部署或验证失败时保留 previous/candidate 目标供重试或卸载恢复
@@ -174,7 +174,9 @@ $CODEX_HOME/redteam-mode/state
 - GitHub Actions 使用 Python 3.11 在 Windows、Ubuntu 和 macOS 上运行完整测试套件
 - 升级或卸载时，如果仍存在的托管路径超出当前清理范围，会在修改任何文件前终止并保留 manifest，用户可使用原始路径参数重试
 - 自定义 `--agents-home` 未启用运行时优先级时安装器会给出警告；验证器会报告运行时 skill 根目录是否与安装目录一致
+- Hook 输入只按 Codex 官方顶层 schema 解析：`SessionStart.source`、`UserPromptSubmit.prompt` 和 `Stop.last_assistant_message`；不接受字段别名、嵌套 metadata、messages 数组或通用 ID
 - `SessionStart` 和 `UserPromptSubmit` 只输出 Codex schema 支持的 wire 字段；路由 phase 保留在 `additionalContext` 中，不再作为未知字段序列化
+- `Stop` 按 `session_id + turn_id` 记录拒答检测；下一条处于 active 红队模式的普通 prompt 一次性消费 overlay，不使用 Stop continuation
 - `SessionStart(source=resume|compact)` 保留已有会话模式，`startup` 与 `clear` 则重置为 normal
 - 启用红队模式以及 `SessionStart(source=resume|compact)` 时会直接注入完整的 `Reverse.md` 补充上下文；normal startup 不注入这一模式级 overlay
 - hook stdout 使用 ASCII-safe JSON，避免 Windows 传统代码页破坏 UTF-8 JSON 协议或中文上下文
@@ -312,6 +314,7 @@ python scripts/validate.py
 - 进入红队模式后自动化层会默认自动运行；实际执行深度取决于本地可用 MCP/工具、scope 和已注册 scoped adapter，缺少工具、scope 或 adapter 时会明确 blocked / pivot
 - 红队模式需要每 session 显式开启
 - 语义 phase 检测是 fallback——对定义明确的任务类型，规则匹配更可靠
+- Session patcher 依赖 Codex 未承诺稳定、随版本变化的 transcript JSONL 内部结构；它不属于正常 Hook 主路径，扫描或修补必须通过 backstop 环境变量显式启用，patch 模式会在替换 transcript 前创建备份
 
 ## 免责声明
 

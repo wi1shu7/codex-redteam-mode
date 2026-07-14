@@ -148,11 +148,11 @@ $CODEX_HOME/redteam-mode/state
 1. **Configuration preflight** — parses and plans both `config.toml` and `hooks.json` merges before copying or cleaning any files, so invalid existing configuration leaves the install untouched
 2. **Upgrade cleanup** — reads the formal manifest and any pending install transaction, preflights their combined managed targets against the current cleanup scope, then removes old/incomplete targets plus known legacy remnants
 3. **Core files** — copies `instruction.ctf.md` and merges `config.toml` into the selected Codex Home (`~/.codex/`, custom `--codex-home`, or `<project>/.codex/`)
-4. **Hooks** — deploys `session-start-context.py`, `hook-security-context-hook.py`, `redteam_state.py`, and `core/` to the selected Codex Home's `hooks/`
+4. **Hooks** — deploys `session-start-context.py`, `hook-security-context-hook.py`, `stop-refusal-hook.py`, `redteam_state.py`, and `core/` to the selected Codex Home's `hooks/`
 5. **Subsystems** — deploys `router/`, `orchestrator/`, `automation/`, and `session_patcher/` to the selected Codex Home
 6. **Skill packs** — deploys all 35 SKILL.md domain cards from `agents/skills/` to the selected agents home (only `SKILL.md` is copied per skill directory)
 7. **Seed prompts** — copies prompt files to the selected Codex Home's `prompts/` directory (skips existing)
-8. **Merge hooks.json** — strips old managed hooks, then injects the current `SessionStart` and `UserPromptSubmit` hooks (preserves user-defined hooks)
+8. **Merge hooks.json** — strips old managed hooks, then injects the current `SessionStart`, `UserPromptSubmit`, and `Stop` hooks (preserves user-defined hooks)
 9. **Merge AGENTS.md** — injects or updates a managed block (`<!-- codex-redteam-optin-mode:start -->`) into the selected Codex Home's `AGENTS.md` as global guidance, or `<project>/AGENTS.md` with `--project-home` as project guidance (preserves user content outside the block)
 10. **Validate candidate** — runs `scripts/validate.py` against the deployed files and a candidate manifest, verifying every subsystem and the installed/runtime-selected skill roots
 11. **Commit manifest** — atomically replaces `redteam-install-manifest.json` and removes the pending transaction only after validation succeeds; failed deployments retain previous and candidate targets for retry or uninstall recovery
@@ -173,7 +173,9 @@ On each run, it reads the previous manifest, removes only project-managed files 
 - GitHub Actions runs the full test suite on Windows, Ubuntu, and macOS with Python 3.11
 - Upgrade and uninstall cleanup abort before changing files when an existing managed path is outside the current scope; the manifest is preserved so the operation can be retried with the original path arguments
 - Custom `--agents-home` installs warn when runtime priority is not enabled, and validation reports when the runtime-selected skill root differs from the installed root
+- Hook input parsing follows the documented top-level Codex schema only: `SessionStart.source`, `UserPromptSubmit.prompt`, and `Stop.last_assistant_message`; aliases, nested metadata, message arrays, and generic IDs are not accepted
 - `SessionStart` and `UserPromptSubmit` output only Codex-supported wire fields; route phase remains inside `additionalContext` instead of being serialized as an unknown field
+- `Stop` records refusal detection by `session_id + turn_id`; the next normal prompt in an active red-team mode consumes the one-shot overlay without using Stop continuation
 - `SessionStart(source=resume|compact)` preserves the existing session mode, while `startup` and `clear` reset to normal
 - Red-team activation and `SessionStart(source=resume|compact)` inject the complete `Reverse.md` supplemental context directly; normal startup remains free of this mode-level overlay
 - Hook JSON is ASCII-safe on stdout, so Windows legacy code pages cannot corrupt the UTF-8 JSON protocol or Chinese context
@@ -296,6 +298,7 @@ Validation covers:
 - Real execution requires explicitly registered scoped adapters; missing tools, scope, or adapters are blocked or pivoted instead of being treated as successful execution
 - Red-team mode must be explicitly enabled per session
 - Semantic phase detection is a fallback — rule-first matching is more reliable for well-defined task types
+- The session patcher depends on Codex's undocumented, version-sensitive transcript JSONL layout. It is not part of the normal Hook path and scanning/patching requires explicit backstop environment opt-in; patch mode creates a backup before replacing the transcript
 
 ## Disclaimer
 
