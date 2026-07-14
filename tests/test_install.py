@@ -20,6 +20,7 @@ CODEX_PATH = REPO_ROOT / "codex"
 HOOKS_PATH = REPO_ROOT / "codex" / "hooks"
 SESSION_START_HOOK = HOOKS_PATH / "session-start-context.py"
 PROMPT_HOOK = HOOKS_PATH / "hook-security-context-hook.py"
+STOP_HOOK = HOOKS_PATH / "stop-refusal-hook.py"
 
 spec = importlib.util.spec_from_file_location("install_script", INSTALL_PATH)
 install = importlib.util.module_from_spec(spec)
@@ -59,7 +60,7 @@ def _write_session(path: Path, mtime: int) -> Path:
     return path
 
 
-def _run_hook_script(script: Path, payload: dict, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+def _run_hook_script(script: Path, payload: object, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, "-B", str(script)],
         input=json.dumps(payload),
@@ -71,7 +72,7 @@ def _run_hook_script(script: Path, payload: dict, env: dict[str, str]) -> subpro
     )
 
 
-def _run_hook_script_bytes(script: Path, payload: dict, env: dict[str, str]) -> subprocess.CompletedProcess[bytes]:
+def _run_hook_script_bytes(script: Path, payload: object, env: dict[str, str]) -> subprocess.CompletedProcess[bytes]:
     return subprocess.run(
         [sys.executable, "-B", str(script)],
         input=json.dumps(payload).encode("ascii"),
@@ -94,6 +95,28 @@ def test_context_hook_output_matches_codex_wire_schema(event: str) -> None:
     assert set(rendered["hookSpecificOutput"]) == {"hookEventName", "additionalContext"}
     assert rendered["hookSpecificOutput"]["hookEventName"] == event
     assert rendered["hookSpecificOutput"]["additionalContext"] == "context"
+
+
+def test_installer_registers_all_hook_events(tmp_path: Path) -> None:
+    codex_home = tmp_path / "codex-home"
+
+    payload = install.build_hooks_payload(REPO_ROOT, codex_home)
+
+    assert set(payload["hooks"]) == {"SessionStart", "UserPromptSubmit", "Stop"}
+    stop_hook = payload["hooks"]["Stop"][0]["hooks"][0]
+    assert "stop-refusal-hook.py" in stop_hook["command"]
+    assert "-EncodedCommand" in stop_hook["commandWindows"]
+
+
+def test_installer_tracks_stop_hook_as_managed(tmp_path: Path) -> None:
+    codex_home = tmp_path / "codex-home"
+    agents_home = tmp_path / "agents-home"
+
+    targets = install.managed_targets(REPO_ROOT, codex_home, agents_home)
+
+    assert codex_home / "hooks" / "stop-refusal-hook.py" in targets
+    assert install.is_managed_hook({"command": "python stop-refusal-hook.py"}) is True
+    assert "hooks/stop-refusal-hook.py" in validate.REQUIRED_CODEX_FILES
 
 
 def test_role_phase_is_used_only_inside_additional_context() -> None:
@@ -174,6 +197,209 @@ def test_hook_stdout_is_utf8_safe_under_gbk(tmp_path: Path) -> None:
 )
 def test_extract_session_start_source(payload: dict, expected: str) -> None:
     assert prompt_parser.extract_session_start_source(payload) == expected
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected"),
+    [
+        ({"prompt": "review authentication"}, "review authentication"),
+        ({"prompt": ""}, ""),
+        ("raw prompt", ""),
+        ({"input": "alias prompt"}, ""),
+        ({"text": "alias prompt"}, ""),
+        ({"message": "alias prompt"}, ""),
+        ({"user_prompt": "alias prompt"}, ""),
+        ({"messages": [{"role": "user", "content": "/redteam light"}]}, ""),
+        ({"prompt": 123}, ""),
+    ],
+)
+def test_extract_prompt_uses_only_official_top_level_field(payload: object, expected: str) -> None:
+    assert prompt_parser.extract_prompt(payload) == expected
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected"),
+    [
+        ({"session_id": " session-123 "}, "session-123"),
+        ({"session_id": ""}, None),
+        ({"session_id": 123}, None),
+        ({"sessionId": "alias"}, None),
+        ({"thread_id": "alias"}, None),
+        ({"conversation_id": "alias"}, None),
+        ({"chat_id": "alias"}, None),
+        ({"id": "ambiguous"}, None),
+        ({"metadata": {"id": "nested"}}, None),
+        ([{"session_id": "nested"}], None),
+        ("session-123", None),
+    ],
+)
+def test_extract_session_id_uses_only_official_top_level_field(payload: object, expected: str | None) -> None:
+    assert prompt_parser.extract_session_id(payload) == expected
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected"),
+    [
+        ({"transcript_path": "C:/tmp/session.jsonl"}, "C:/tmp/session.jsonl"),
+        ({"transcript_path": None}, None),
+        ({"transcript_path": ""}, None),
+        ({"transcript_path": 123}, None),
+        ({"transcriptPath": "C:/tmp/alias.jsonl"}, None),
+        ({"session": {"transcript_path": "C:/tmp/nested.jsonl"}}, None),
+        ([{"transcript_path": "C:/tmp/nested.jsonl"}], None),
+        ("C:/tmp/session.jsonl", None),
+    ],
+)
+def test_extract_transcript_path_uses_only_official_top_level_field(
+    payload: object,
+    expected: str | None,
+) -> None:
+    assert prompt_parser.extract_transcript_path(payload) == expected
+
+
+def test_prompt_hook_rejects_alias_only_payload(tmp_path: Path) -> None:
+    session_id = "alias-payload-session"
+    codex_home = tmp_path / "codex-home"
+    env = {**os.environ, "CODEX_HOME": str(codex_home), "NO_COLOR": "1"}
+
+    submitted = _run_hook_script(
+        PROMPT_HOOK,
+        {"sessionId": session_id, "message": "/redteam light"},
+        env,
+    )
+
+    assert submitted.stdout == ""
+    assert not (codex_home / "redteam-mode" / "state" / "sessions" / f"{session_id}.json").exists()
+
+
+def test_prompt_hook_rejects_messages_fallback(tmp_path: Path) -> None:
+    session_id = "messages-payload-session"
+    codex_home = tmp_path / "codex-home"
+    env = {**os.environ, "CODEX_HOME": str(codex_home), "NO_COLOR": "1"}
+
+    submitted = _run_hook_script(
+        PROMPT_HOOK,
+        {
+            "session_id": session_id,
+            "messages": [{"role": "user", "content": "/redteam light"}],
+        },
+        env,
+    )
+
+    assert submitted.stdout == ""
+    assert not (codex_home / "redteam-mode" / "state" / "sessions" / f"{session_id}.json").exists()
+
+
+def test_session_start_rejects_non_object_payload(tmp_path: Path) -> None:
+    env = {**os.environ, "CODEX_HOME": str(tmp_path / "codex-home"), "NO_COLOR": "1"}
+
+    started = _run_hook_script(SESSION_START_HOOK, "not-an-object", env)
+
+    assert started.stdout == ""
+
+
+@pytest.mark.parametrize(
+    ("message", "expected"),
+    [
+        ("I cannot assist with that request.", True),
+        ("需要更多证据，当前无法确认这个漏洞。", False),
+        (None, False),
+        (123, False),
+    ],
+)
+def test_refusal_detection_accepts_only_stop_message_text(message: object, expected: bool) -> None:
+    assert refusal_backstop.message_has_refusal(message) is expected
+
+
+def test_stop_hook_records_and_next_prompt_consumes_refusal_overlay(tmp_path: Path) -> None:
+    session_id = "stop-refusal-session"
+    turn_id = "turn-refusal-1"
+    codex_home = tmp_path / "codex-home"
+    env = {
+        **os.environ,
+        "CODEX_HOME": str(codex_home),
+        "CODEX_REDTEAM_AUTOMATION_MODE": "plan-only",
+        "NO_COLOR": "1",
+    }
+    state_path = codex_home / "redteam-mode" / "state" / "sessions" / f"{session_id}.json"
+
+    _run_hook_script(PROMPT_HOOK, {"session_id": session_id, "prompt": "/redteam light"}, env)
+    stopped = _run_hook_script(
+        STOP_HOOK,
+        {
+            "session_id": session_id,
+            "turn_id": turn_id,
+            "stop_hook_active": False,
+            "last_assistant_message": "I cannot assist with that request.",
+        },
+        env,
+    )
+
+    assert json.loads(stopped.stdout) == {}
+    recorded = json.loads(state_path.read_text(encoding="utf-8"))
+    assert recorded["pending_refusal_overlay"] is True
+    assert recorded["last_refusal_turn_id"] == turn_id
+
+    submitted = _run_hook_script(
+        PROMPT_HOOK,
+        {"session_id": session_id, "prompt": "Review authentication bypass risk"},
+        env,
+    )
+    context = json.loads(submitted.stdout)["hookSpecificOutput"]["additionalContext"]
+    assert "[backstop:recent-refusal-detected]" in context
+    consumed = json.loads(state_path.read_text(encoding="utf-8"))
+    assert consumed["pending_refusal_overlay"] is False
+    assert consumed["last_refusal_turn_id"] == turn_id
+
+    repeated = _run_hook_script(
+        STOP_HOOK,
+        {
+            "session_id": session_id,
+            "turn_id": turn_id,
+            "stop_hook_active": False,
+            "last_assistant_message": "I cannot assist with that request.",
+        },
+        env,
+    )
+    assert json.loads(repeated.stdout) == {}
+    assert json.loads(state_path.read_text(encoding="utf-8"))["pending_refusal_overlay"] is False
+
+    next_prompt = _run_hook_script(
+        PROMPT_HOOK,
+        {"session_id": session_id, "prompt": "Review authorization controls"},
+        env,
+    )
+    next_context = json.loads(next_prompt.stdout)["hookSpecificOutput"]["additionalContext"]
+    assert "[backstop:recent-refusal-detected]" not in next_context
+
+
+def test_stop_hook_ignores_active_continuation_and_null_message(tmp_path: Path) -> None:
+    session_id = "stop-noop-session"
+    codex_home = tmp_path / "codex-home"
+    env = {**os.environ, "CODEX_HOME": str(codex_home), "NO_COLOR": "1"}
+    state_path = codex_home / "redteam-mode" / "state" / "sessions" / f"{session_id}.json"
+
+    _run_hook_script(PROMPT_HOOK, {"session_id": session_id, "prompt": "/redteam light"}, env)
+    for payload in (
+        {
+            "session_id": session_id,
+            "turn_id": "turn-active",
+            "stop_hook_active": True,
+            "last_assistant_message": "I cannot assist with that request.",
+        },
+        {
+            "session_id": session_id,
+            "turn_id": "turn-null",
+            "stop_hook_active": False,
+            "last_assistant_message": None,
+        },
+    ):
+        stopped = _run_hook_script(STOP_HOOK, payload, env)
+        assert json.loads(stopped.stdout) == {}
+
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    assert state["pending_refusal_overlay"] is False
+    assert state["last_refusal_turn_id"] == ""
 
 
 @pytest.mark.parametrize(
@@ -972,6 +1198,7 @@ def test_merge_hooks_json_accepts_utf8_bom_and_preserves_user_hooks(tmp_path: Pa
     ]
     assert "user-command" in commands
     assert any("session-start-context.py" in command for command in commands)
+    assert any("stop-refusal-hook.py" in command for command in commands)
 
 
 def test_validator_accepts_utf8_bom_hooks_json(tmp_path: Path) -> None:
@@ -1031,10 +1258,13 @@ def test_installed_hook_commands_support_windows_shell_metacharacters(tmp_path: 
     hooks_payload = json.loads((codex_home / "hooks.json").read_text(encoding="utf-8"))
     session_hook = hooks_payload["hooks"]["SessionStart"][0]["hooks"][0]
     prompt_hook = hooks_payload["hooks"]["UserPromptSubmit"][0]["hooks"][0]
+    stop_hook = hooks_payload["hooks"]["Stop"][0]["hooks"][0]
     assert "-EncodedCommand" in session_hook["commandWindows"]
     assert "-EncodedCommand" in prompt_hook["commandWindows"]
+    assert "-EncodedCommand" in stop_hook["commandWindows"]
     assert str(codex_home) not in session_hook["commandWindows"]
     assert str(codex_home) not in prompt_hook["commandWindows"]
+    assert str(codex_home) not in stop_hook["commandWindows"]
 
     session_id = "space-path-session"
     started = subprocess.run(
@@ -1060,6 +1290,25 @@ def test_installed_hook_commands_support_windows_shell_metacharacters(tmp_path: 
     )
     assert enabled.returncode == 0, enabled.stderr
     assert "Red-team mode enabled" in json.loads(enabled.stdout)["hookSpecificOutput"]["additionalContext"]
+
+    stopped = subprocess.run(
+        stop_hook["commandWindows"],
+        input=json.dumps(
+            {
+                "session_id": session_id,
+                "turn_id": "windows-stop-turn",
+                "stop_hook_active": False,
+                "last_assistant_message": None,
+            }
+        ),
+        text=True,
+        shell=True,
+        capture_output=True,
+        env=env,
+        check=False,
+    )
+    assert stopped.returncode == 0, stopped.stderr
+    assert json.loads(stopped.stdout) == {}
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX hook command is executed by /bin/sh")
@@ -1087,6 +1336,7 @@ def test_installed_hook_commands_support_posix_shell_metacharacters(tmp_path: Pa
     hooks_payload = json.loads((codex_home / "hooks.json").read_text(encoding="utf-8"))
     session_command = hooks_payload["hooks"]["SessionStart"][0]["hooks"][0]["command"]
     prompt_command = hooks_payload["hooks"]["UserPromptSubmit"][0]["hooks"][0]["command"]
+    stop_command = hooks_payload["hooks"]["Stop"][0]["hooks"][0]["command"]
     session_id = "posix-special-path-session"
 
     started = subprocess.run(
@@ -1112,6 +1362,25 @@ def test_installed_hook_commands_support_posix_shell_metacharacters(tmp_path: Pa
     )
     assert enabled.returncode == 0, enabled.stderr
     assert "Red-team mode enabled" in json.loads(enabled.stdout)["hookSpecificOutput"]["additionalContext"]
+
+    stopped = subprocess.run(
+        stop_command,
+        input=json.dumps(
+            {
+                "session_id": session_id,
+                "turn_id": "posix-stop-turn",
+                "stop_hook_active": False,
+                "last_assistant_message": None,
+            }
+        ),
+        text=True,
+        shell=True,
+        capture_output=True,
+        env=env,
+        check=False,
+    )
+    assert stopped.returncode == 0, stopped.stderr
+    assert json.loads(stopped.stdout) == {}
 
 
 @pytest.mark.parametrize(
@@ -2012,7 +2281,7 @@ def test_runtime_log_root_falls_back_to_user_codex_logs(tmp_path: Path, monkeypa
 
 
 def test_extract_transcript_path_from_hook_payload() -> None:
-    payload = {"session": {"transcript_path": "C:/tmp/session.jsonl"}}
+    payload = {"transcript_path": "C:/tmp/session.jsonl"}
 
     assert prompt_parser.extract_transcript_path(payload) == "C:/tmp/session.jsonl"
 
