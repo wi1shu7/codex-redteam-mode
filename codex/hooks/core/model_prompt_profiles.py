@@ -28,12 +28,10 @@ class ModelPromptProfile:
     source: str
 
     def render(self) -> str:
-        if not self.content:
-            return ""
         return (
             "[model-prompt-profile]\n"
-            f"model={self.model}; profile={self.profile}; source={self.source}; file={self.filename}\n\n"
-            f"{self.content}"
+            f"model={self.model}; profile={self.profile}; source={self.source}; file={self.filename}; "
+            "delivery=model_instructions_file; layer=system"
         )
 
 

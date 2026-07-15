@@ -50,6 +50,14 @@ def main() -> None:
     if notice:
         context = f"{context}\n{notice}"
 
+    profile = resolve_model_prompt_profile(CODEX_DIR, payload=payload, transcript_path=transcript_path)
+    state.active_model = profile.model
+    state.active_prompt_profile = profile.profile
+    save_runtime_state(state, session_id=session_id)
+    model_overlay = profile.render()
+    if model_overlay:
+        context = f"{context}\n{model_overlay}"
+
     if state.mode in {"redteam-light", "redteam-full"}:
         prepoison = build_prepoisoned_context()
         if prepoison:
@@ -58,14 +66,6 @@ def main() -> None:
         mode_overlay = build_redteam_mode_overlay(CODEX_DIR, state.mode)
         if mode_overlay:
             context = f"{context}\n{mode_overlay}"
-
-        profile = resolve_model_prompt_profile(CODEX_DIR, payload=payload, transcript_path=transcript_path)
-        state.active_model = profile.model
-        state.active_prompt_profile = profile.profile
-        save_runtime_state(state, session_id=session_id)
-        model_overlay = profile.render()
-        if model_overlay:
-            context = f"{context}\n{model_overlay}"
 
         backstop = session_start_backstop_messages(session_id, transcript_path=transcript_path)
         if backstop:
