@@ -40,7 +40,8 @@ Disable red-team mode when the user requests one of:
 - distinguish facts from assumptions
 - every loop decision must expose `trigger`, `feedback_gate`, and `exit_condition`
 - end with one concrete next step
-- select the model-specific jailbreak profile from the actual runtime model and refresh it whenever the model changes
+- load the model profile catalog through `model_instructions_file` and select one profile from new-conversation `SessionStart` model metadata
+- after changing models, start a new conversation so the system router selects the new profile
 
 ## Automation contract
 

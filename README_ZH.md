@@ -87,6 +87,7 @@ python scripts/install.py
 | `--project-home PATH` | 项目级安装根目录。Codex 文件写入 `PATH/.codex`，skills 默认写入 `PATH/.agents/skills`，项目级指导写入 `PATH/AGENTS.md` |
 | `--agents-home PATH` | skill 安装目标目录（默认：`~/.agents`，使用 `--project-home` 时默认：`PATH/.agents`）。自定义运行时目录还需同时使用 `--enable-custom-skill-dirs` |
 | `--codex-home PATH` | 自定义 Codex Home/profile 文件的安装目标（默认：`~/.codex`）。`PATH/AGENTS.md` 会作为该 Codex Home 的全局 guidance；项目级 guidance 请使用 `--project-home`。不要和 `--project-home` 混用 |
+| `--model MODEL` | 为本次安装选择对应模型的系统提示词 profile；优先级高于环境变量和配置检测 |
 | `--log-root PATH` | 自定义自动化日志根目录，并写入安装 manifest |
 | `--enable-custom-skill-dirs` | 让运行时优先使用 manifest 中记录的自定义 skill 目录 |
 | `--dry-run` | 预览模式，打印所有操作但不实际写入 |
@@ -98,6 +99,15 @@ python scripts/install.py --dry-run
 
 # 安装到自定义 Codex Home/profile
 python scripts/install.py --codex-home /opt/codex/home
+
+# 显式生成 GPT-5.6 对应的系统提示词
+python scripts/install.py --model gpt-5.6-codex
+
+# 安装后启动新会话：自动按本次 --model 选择系统提示词
+%CODEX_HOME%\redteam-mode\codex-redteam.cmd --model gpt-5.6-sol
+
+# macOS / Linux
+$CODEX_HOME/redteam-mode/codex-redteam --model gpt-5.6-sol
 
 # 项目级安装，包含项目根目录 AGENTS.md
 python scripts/install.py --project-home /path/to/project
@@ -149,7 +159,7 @@ $CODEX_HOME/redteam-mode/state
 
 1. **配置预检** — 在复制或清理任何文件前，先解析并规划 `config.toml` 与 `hooks.json` 合并；已有配置非法时，安装会失败且不留下部分安装痕迹
 2. **升级清理** — 同时读取正式 manifest 和 pending install transaction，先检查两者目标并集是否属于当前清理范围，再移除旧版本、未完成安装目标及已知历史残留
-3. **核心文件** — 复制 `instruction.ctf.md`，并将 `config.toml` 合并到选定的 Codex Home（`~/.codex/`、自定义 `--codex-home` 或 `<project>/.codex/`）
+3. **系统提示词** — 将用户已有系统指令（如有）+ `instruction.ctf.md` + GPT-5.x Profile 路由目录合成为 `redteam-mode/system-instructions.md`，并让 `model_instructions_file` 指向该文件
 4. **Hooks** — 部署 `session-start-context.py`、`hook-security-context-hook.py`、`redteam_state.py`、`core/` 到选定 Codex Home 的 `hooks/`
 5. **子系统** — 部署 `router/`、`orchestrator/`、`automation/`、`session_patcher/` 到选定 Codex Home
 6. **技能包** — 部署全部 36 个 SKILL.md 领域卡从 `agents/skills/` 到选定的 agents 目录（每个 skill 目录仅复制 SKILL.md）
@@ -166,6 +176,7 @@ $CODEX_HOME/redteam-mode/state
 每次运行时，先读取旧版本 manifest，仅移除本项目托管的旧安装文件，再从当前版本重新部署。这意味着：
 - 版本升级干净，同时不触碰用户自己的文件
 - `config.toml` 使用合并而不是覆盖；已有用户配置会保留，实际修改已有配置前会创建 `config.toml.YYYYMMDDHHMMSS.bak` 备份
+- 用户已有的 `model_instructions_file` 内容会保留在组合系统提示词的第一段；原配置值写入 manifest，卸载时恢复
 - `config.toml` 合并使用 `tomlkit`，避免 `[[skills.config]]` 等数组表吞入本应属于 `[automation]` 的键
 - manifest 会记录安装器新增的每个 `config.toml` 值和表；卸载会先移除仍保持原值的安装器托管项，再删除被引用文件，用户修改过的值会保留
 - 对于没有字段所有权元数据的旧 manifest，如果 `config.toml` 仍引用 `instruction.ctf.md`，卸载会保留该文件，避免卸载后 Codex 配置失效
@@ -226,9 +237,23 @@ disable red team mode
 | `redteam-light` | 否 | 定向安全分析、规划、审查 |
 | `redteam-full` | 否 | 受限的红队工作流、实战操作 |
 
-### 模型提示词自动切换
+### 新会话自动选择系统提示词
 
-红队模式启用、会话恢复或当前模型发生变化时，hook 按以下顺序识别模型：payload → transcript 最新 `turn_context` → `CODEX_MODEL` → `config.toml`。完整 profile 只在启用、恢复和模型变化时注入，并将 `active_model` 与 `active_prompt_profile` 写入 session state。
+安装器按以下优先级识别模型：`--model` → `CODEX_MODEL` → 目标 `config.toml` → 上次安装 manifest → 源项目 `config.toml` → default。随后严格按以下顺序生成一个系统层文件：
+
+1. 用户原 `model_instructions_file` 内容（如有）
+2. `instruction.ctf.md`
+3. 模型路由规则和所有配置的 `Jailbreak.gpt-5.x.md`
+
+安装后的 `config.toml` 会让 `model_instructions_file` 指向 `./redteam-mode/system-instructions.md`。该系统文件包含基础指令、模型路由规则以及所有配置的 GPT-5.x Profile；每个新对话的 `SessionStart` Hook 始终只报告当前模型/Profile 元数据，系统层据此激活唯一匹配段落，其他 Profile 段落按系统规则保持惰性。
+
+#### Codex App
+
+安装后直接打开 Codex App。新建对话并在 App 中选择 GPT-5.5 或 GPT-5.6 时，静态 `model_instructions_file` 加载同一个系统路由文件，`SessionStart` 的模型元数据选择对应 Profile。首次安装或 Hook 内容更新后需在 Codex 的 Hook 管理界面信任该 `SessionStart` Hook。模型切换请新建对话；同一对话内保留启动时的系统 Profile。
+
+#### Codex CLI
+
+普通 `codex` 新会话同样使用系统路由文件。安装器还部署 `redteam-mode/codex-redteam.cmd` 和 `redteam-mode/codex-redteam`：它们在创建 Codex 进程前从本次 `--model` / `-m` / `-c model=...`、`CODEX_MODEL` 或 `config.toml` 检测模型，只生成并加载匹配的单 Profile 系统文件。每个 CLI 会话使用独立的 `system-instructions.Jailbreak.gpt-5.x.SESSION.md`，进程结束后自动清理。
 
 默认映射可在 `config.toml` 中覆盖：
 
@@ -240,7 +265,7 @@ disable red team mode
 default = "Jailbreak.default.md"
 ```
 
-profile 文件位于 `$CODEX_HOME/prompts/`。匹配采用模型名通配符；未匹配或专用文件缺失时回落到 `default`。
+profile 文件位于 `$CODEX_HOME/prompts/`。匹配采用模型名通配符；未匹配或专用文件缺失时回落到 `default`。App/普通 CLI 由系统路由目录加 `SessionStart` 元数据选择；`codex-redteam` CLI 启动器则在进程启动前加载单 Profile。两种方式都以新对话为切换边界。
 
 ## 工作流程
 

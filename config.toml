@@ -1,5 +1,5 @@
 # Codex red-team profile
-model_instructions_file = './instruction.ctf.md'
+model_instructions_file = './redteam-mode/system-instructions.md'
 
 [features]
 hooks = true

@@ -6,6 +6,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Added an App-compatible system-layer profile catalog. A static `model_instructions_file` now contains all configured GPT-5.x profiles plus a strict router, while every new conversation emits selector-only model metadata from `SessionStart`.
+- Added cross-platform `codex-redteam` launchers that detect the model before a new Codex process starts, generate a model-specific system instructions file, and pass it through a process-local `model_instructions_file` override.
+- Added independent per-session system files so concurrent GPT-5.5 and GPT-5.6 sessions do not overwrite each other's system prompt; launchers remove their temporary profile after Codex exits.
+
 ## [1.3.0] - 2026-07-14
 
 ### Added
@@ -13,6 +19,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Added a managed GPT-5.4 jailbreak profile and the `gpt-5.4*` automatic model-profile mapping.
 - Added normalized-content integrity coverage for the imported GPT-5.4 CTF Core Contract.
 - Extended installer validation, deployment, uninstall, and model-selection regression coverage to GPT-5.4.
+- Added `--model` plus config/environment/manifest model detection for selecting the installation-time system profile.
+
+### Changed
+
+- The installer now composes the user's existing system instructions, `instruction.ctf.md`, and the matching GPT-5.x jailbreak profile into `$CODEX_HOME/redteam-mode/system-instructions.md` and configures it through `model_instructions_file`.
+- Model-profile hooks now emit selection metadata only; the jailbreak body is delivered exclusively through the generated model instructions file.
+- Model changes take effect after reinstalling the profile and starting a new task instead of attempting same-task hot switching.
+
+### Fixed
+
+- Uninstall restores a replaced user `model_instructions_file` value while removing the generated system file and preserving the original user instruction file.
 
 ## [1.2.0] - 2026-07-14
 

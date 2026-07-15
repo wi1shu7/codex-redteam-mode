@@ -86,6 +86,7 @@ python scripts/install.py
 | `--project-home PATH` | Project-level install root. Writes Codex files to `PATH/.codex`, skills to `PATH/.agents/skills` unless `--agents-home` is set, and project guidance to `PATH/AGENTS.md` |
 | `--agents-home PATH` | Skill installation destination (default: `~/.agents`, or `PATH/.agents` with `--project-home`). For a custom runtime directory, also use `--enable-custom-skill-dirs` |
 | `--codex-home PATH` | Custom installation target for Codex Home/profile files (default: `~/.codex`). Writes `PATH/AGENTS.md` as global guidance; use `--project-home` for project guidance. Do not combine with `--project-home` |
+| `--model MODEL` | Select the model-specific system prompt profile for this installation; overrides environment and config detection |
 | `--log-root PATH` | Custom automation log root recorded in the install manifest |
 | `--enable-custom-skill-dirs` | Prioritize the manifest-recorded custom skill directory at runtime |
 | `--dry-run` | Preview all operations without writing any files |
@@ -97,6 +98,15 @@ python scripts/install.py --dry-run
 
 # Custom Codex Home/profile install
 python scripts/install.py --codex-home /opt/codex/home
+
+# Explicitly compose the GPT-5.6 system instructions
+python scripts/install.py --model gpt-5.6-codex
+
+# Start a new session with automatic prompt selection from --model
+%CODEX_HOME%\redteam-mode\codex-redteam.cmd --model gpt-5.6-sol
+
+# macOS / Linux
+$CODEX_HOME/redteam-mode/codex-redteam --model gpt-5.6-sol
 
 # Project-level install, including project AGENTS.md
 python scripts/install.py --project-home /path/to/project
@@ -148,7 +158,7 @@ $CODEX_HOME/redteam-mode/state
 
 1. **Configuration preflight** — parses and plans both `config.toml` and `hooks.json` merges before copying or cleaning any files, so invalid existing configuration leaves the install untouched
 2. **Upgrade cleanup** — reads the formal manifest and any pending install transaction, preflights their combined managed targets against the current cleanup scope, then removes old/incomplete targets plus known legacy remnants
-3. **Core files** — copies `instruction.ctf.md` and merges `config.toml` into the selected Codex Home (`~/.codex/`, custom `--codex-home`, or `<project>/.codex/`)
+3. **System instructions** — composes any existing user system instructions + `instruction.ctf.md` + the GPT-5.x profile routing catalog into `redteam-mode/system-instructions.md`, and points `model_instructions_file` to that generated file
 4. **Hooks** — deploys `session-start-context.py`, `hook-security-context-hook.py`, `redteam_state.py`, and `core/` to the selected Codex Home's `hooks/`
 5. **Subsystems** — deploys `router/`, `orchestrator/`, `automation/`, and `session_patcher/` to the selected Codex Home
 6. **Skill packs** — deploys all 36 SKILL.md domain cards from `agents/skills/` to the selected agents home (only `SKILL.md` is copied per skill directory)
@@ -165,6 +175,7 @@ The installer is **idempotent** — running it repeatedly is safe and will not d
 On each run, it reads the previous manifest, removes only project-managed files from the old install, then re-deploys from the current version. This means:
 - Version upgrades are clean without touching user-owned files
 - `config.toml` is merged instead of overwritten; existing user settings are preserved, and changed existing configs are backed up as `config.toml.YYYYMMDDHHMMSS.bak`
+- An existing user `model_instructions_file` is preserved as the first section of the generated system file; its original config value is recorded in the manifest and restored on uninstall
 - `config.toml` merging uses `tomlkit` so array tables such as `[[skills.config]]` do not receive keys meant for `[automation]`
 - The manifest records each `config.toml` value and table added by the installer; uninstall removes only unchanged installer-owned values before deleting referenced files, while user-modified values are preserved
 - Legacy manifests without field ownership metadata preserve `instruction.ctf.md` when `config.toml` still references it, avoiding a broken Codex profile after uninstall
@@ -225,9 +236,23 @@ Disabling the mode stops future structured routing and resets the current sessio
 | `redteam-light` | No | Targeted security analysis, planning, review |
 | `redteam-full` | No | Constrained red team workflow, operations |
 
-### Automatic Model Prompt Switching
+### Automatic New-Session System Prompt Selection
 
-When red-team mode is enabled, a session is restored, or the active model changes, the hook resolves the model in this order: payload → latest transcript `turn_context` → `CODEX_MODEL` → `config.toml`. The full profile is injected only on activation, restore, and model change; `active_model` and `active_prompt_profile` are persisted in session state.
+The installer resolves the model in this order: `--model` → `CODEX_MODEL` → target `config.toml` → previous install manifest → source `config.toml` → default. It then writes one system-layer file in this exact order:
+
+1. Existing user `model_instructions_file` content, when configured
+2. `instruction.ctf.md`
+3. Model-routing rules and every configured `Jailbreak.gpt-5.x.md`
+
+The installed `config.toml` points `model_instructions_file` to `./redteam-mode/system-instructions.md`. That system file contains the base instructions, model-routing rules, and every configured GPT-5.x profile. Every new conversation's `SessionStart` hook reports only the current model/profile metadata; the system-layer router activates exactly the matching section and treats all other profile sections as inert.
+
+#### Codex App
+
+After installation, open Codex App normally. When a new conversation selects GPT-5.5 or GPT-5.6 in the App, the static `model_instructions_file` loads the shared system router and `SessionStart` metadata selects the matching profile. After first install or a hook-content update, trust this `SessionStart` hook in Codex's hook manager. Start a new conversation when changing models; an existing conversation retains its startup system profile.
+
+#### Codex CLI
+
+Ordinary `codex` sessions also use the system router. The installer additionally deploys `redteam-mode/codex-redteam.cmd` and `redteam-mode/codex-redteam`. Before starting Codex, these launchers detect the model from `--model`, `-m`, or `-c model=...`, then `CODEX_MODEL` or `config.toml`, and load only the matching profile through a process-local `model_instructions_file` override. Each CLI session receives an independent `system-instructions.Jailbreak.gpt-5.x.SESSION.md`, removed after the process exits.
 
 Override the default mapping in `config.toml`:
 
@@ -239,7 +264,7 @@ Override the default mapping in `config.toml`:
 default = "Jailbreak.default.md"
 ```
 
-Profile files live under `$CODEX_HOME/prompts/`. Model keys support glob patterns; an unmatched model or missing specialized file falls back to `default`.
+Profile files live under `$CODEX_HOME/prompts/`. Model keys support glob patterns; an unmatched model or missing specialized file falls back to `default`. App and ordinary CLI sessions use the system catalog plus `SessionStart` metadata; the `codex-redteam` CLI launcher selects one profile before process startup. Both approaches use a new conversation as the model-switch boundary.
 
 ## Working Flow
 
