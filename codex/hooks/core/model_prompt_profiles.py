@@ -2,15 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from fnmatch import fnmatchcase
-import json
 import os
 from pathlib import Path
 import tomllib
 from typing import Any
 
 
-MODEL_KEYS = ("model", "model_name", "modelName", "model_id", "modelId")
-NESTED_KEYS = ("context", "session", "thread", "conversation", "metadata", "_meta", "meta", "turn_context")
 DEFAULT_PROFILE_FILES = {
     "gpt-5.6*": "Jailbreak.gpt-5.6.md",
     "gpt-5.5*": "Jailbreak.gpt-5.5.md",
@@ -35,47 +32,11 @@ class ModelPromptProfile:
         )
 
 
-def extract_model(payload: Any) -> str:
-    if isinstance(payload, dict):
-        for key in MODEL_KEYS:
-            value = payload.get(key)
-            if isinstance(value, str) and value.strip():
-                return value.strip()
-        for key in NESTED_KEYS:
-            found = extract_model(payload.get(key))
-            if found:
-                return found
-    if isinstance(payload, list):
-        for item in payload:
-            found = extract_model(item)
-            if found:
-                return found
-    return ""
-
-
-def extract_model_from_transcript(transcript_path: str | None, max_bytes: int = 524288) -> str:
-    if not transcript_path:
+def extract_model(payload: object) -> str:
+    if not isinstance(payload, dict):
         return ""
-    path = Path(transcript_path).expanduser()
-    try:
-        with path.open("rb") as handle:
-            handle.seek(0, 2)
-            size = handle.tell()
-            handle.seek(max(0, size - max_bytes))
-            raw = handle.read()
-    except OSError:
-        return ""
-    for raw_line in reversed(raw.decode("utf-8-sig", "replace").splitlines()):
-        try:
-            record = json.loads(raw_line)
-        except json.JSONDecodeError:
-            continue
-        if not isinstance(record, dict) or record.get("type") not in {"turn_context", "session_meta", "model_context"}:
-            continue
-        found = extract_model(record.get("payload"))
-        if found:
-            return found
-    return ""
+    value = payload.get("model")
+    return value.strip() if isinstance(value, str) and value.strip() else ""
 
 
 def _config_candidates(codex_dir: Path) -> list[Path]:
@@ -152,15 +113,11 @@ def _select_profile(model: str, mapping: dict[str, str]) -> tuple[str, str]:
 
 def resolve_model_prompt_profile(
     codex_dir: Path,
-    payload: Any = None,
-    transcript_path: str | None = None,
+    payload: object = None,
 ) -> ModelPromptProfile:
     configs = _read_configs(codex_dir)
     model = extract_model(payload)
     source = "payload"
-    if not model:
-        model = extract_model_from_transcript(transcript_path)
-        source = "transcript"
     if not model:
         model = os.environ.get("CODEX_MODEL", "").strip()
         source = "environment"

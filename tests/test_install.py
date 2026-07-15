@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import inspect
 import json
 import os
 import subprocess
@@ -40,7 +41,7 @@ if str(HOOKS_PATH) not in sys.path:
     sys.path.insert(0, str(HOOKS_PATH))
 if str(CODEX_PATH) not in sys.path:
     sys.path.insert(0, str(CODEX_PATH))
-from core import controller, emitter, memory_store, prompt_parser, refusal_backstop, runtime_paths, skill_card, supplemental_prompts
+from core import controller, emitter, memory_store, model_prompt_profiles, prompt_parser, refusal_backstop, runtime_paths, skill_card, supplemental_prompts
 from session_patcher import patcher
 import redteam_state
 
@@ -156,7 +157,7 @@ def _write_session(path: Path, mtime: int) -> Path:
     return path
 
 
-def _run_hook_script(script: Path, payload: dict, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+def _run_hook_script(script: Path, payload: object, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, "-B", str(script)],
         input=json.dumps(payload),
@@ -168,7 +169,7 @@ def _run_hook_script(script: Path, payload: dict, env: dict[str, str]) -> subpro
     )
 
 
-def _run_hook_script_bytes(script: Path, payload: dict, env: dict[str, str]) -> subprocess.CompletedProcess[bytes]:
+def _run_hook_script_bytes(script: Path, payload: object, env: dict[str, str]) -> subprocess.CompletedProcess[bytes]:
     return subprocess.run(
         [sys.executable, "-B", str(script)],
         input=json.dumps(payload).encode("ascii"),
@@ -267,6 +268,115 @@ def test_hook_stdout_is_utf8_safe_under_gbk(tmp_path: Path) -> None:
 )
 def test_extract_session_start_source(payload: dict, expected: str) -> None:
     assert prompt_parser.extract_session_start_source(payload) == expected
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected"),
+    [
+        ({"prompt": "official"}, "official"),
+        ({"input": "alias"}, ""),
+        ({"message": "alias"}, ""),
+        ({"messages": [{"role": "user", "content": "nested"}]}, ""),
+        ("raw string", ""),
+        ([], ""),
+    ],
+)
+def test_extract_prompt_uses_only_official_top_level_field(payload: object, expected: str) -> None:
+    assert prompt_parser.extract_prompt(payload) == expected
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected"),
+    [
+        ({"session_id": " session-123 "}, "session-123"),
+        ({"sessionId": "alias"}, None),
+        ({"thread_id": "alias"}, None),
+        ({"metadata": {"session_id": "nested"}}, None),
+        ([{"session_id": "nested"}], None),
+    ],
+)
+def test_extract_session_id_uses_only_official_top_level_field(payload: object, expected: str | None) -> None:
+    assert prompt_parser.extract_session_id(payload) == expected
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected"),
+    [
+        ({"transcript_path": "C:/tmp/session.jsonl"}, "C:/tmp/session.jsonl"),
+        ({"transcriptPath": "C:/tmp/alias.jsonl"}, None),
+        ({"session": {"transcript_path": "C:/tmp/nested.jsonl"}}, None),
+    ],
+)
+def test_extract_transcript_path_uses_only_official_top_level_field(
+    payload: object,
+    expected: str | None,
+) -> None:
+    assert prompt_parser.extract_transcript_path(payload) == expected
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected"),
+    [
+        ({"model": " gpt-5.6 "}, "gpt-5.6"),
+        ({"modelName": "alias"}, ""),
+        ({"metadata": {"model": "nested"}}, ""),
+        ([{"model": "nested"}], ""),
+    ],
+)
+def test_extract_model_uses_only_official_top_level_field(payload: object, expected: str) -> None:
+    assert model_prompt_profiles.extract_model(payload) == expected
+
+
+def test_model_prompt_profile_uses_config_after_rejecting_payload_alias(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    codex_dir = tmp_path / "codex"
+    prompts_dir = codex_dir / "prompts"
+    prompts_dir.mkdir(parents=True)
+    (prompts_dir / "Jailbreak.default.md").write_text("profile body", encoding="utf-8")
+    (codex_dir / "config.toml").write_text('model = "config-model"\n', encoding="utf-8")
+    monkeypatch.delenv("CODEX_MODEL", raising=False)
+
+    profile = model_prompt_profiles.resolve_model_prompt_profile(
+        codex_dir,
+        payload={"modelName": "alias-model"},
+    )
+
+    assert profile.model == "config-model"
+    assert profile.source == "config"
+    assert profile.content == "profile body"
+
+
+def test_model_prompt_profile_has_no_transcript_fallback() -> None:
+    parameters = inspect.signature(model_prompt_profiles.resolve_model_prompt_profile).parameters
+
+    assert list(parameters) == ["codex_dir", "payload"]
+    assert not hasattr(model_prompt_profiles, "extract_model_from_transcript")
+
+
+def test_prompt_hook_rejects_alias_only_payload(tmp_path: Path) -> None:
+    session_id = "alias-payload-session"
+    codex_home = tmp_path / "codex-home"
+    env = {**os.environ, "CODEX_HOME": str(codex_home), "NO_COLOR": "1"}
+
+    submitted = _run_hook_script(
+        PROMPT_HOOK,
+        {"sessionId": session_id, "message": "/redteam light"},
+        env,
+    )
+
+    assert submitted.stdout == ""
+    assert not (codex_home / "redteam-mode" / "state" / "sessions" / f"{session_id}.json").exists()
+
+
+@pytest.mark.parametrize("payload", ["not-an-object", ["not-an-object"], {"source": "startup"}])
+def test_session_start_rejects_payload_without_official_session_id(tmp_path: Path, payload: object) -> None:
+    env = {**os.environ, "CODEX_HOME": str(tmp_path / "codex-home"), "NO_COLOR": "1"}
+
+    started = _run_hook_script(SESSION_START_HOOK, payload, env)
+
+    assert started.stdout == ""
 
 
 def test_session_start_preserves_mode_on_resume_and_compact(tmp_path: Path) -> None:
@@ -1985,7 +2095,7 @@ def test_runtime_log_root_falls_back_to_user_codex_logs(tmp_path: Path, monkeypa
 
 
 def test_extract_transcript_path_from_hook_payload() -> None:
-    payload = {"session": {"transcript_path": "C:/tmp/session.jsonl"}}
+    payload = {"transcript_path": "C:/tmp/session.jsonl"}
 
     assert prompt_parser.extract_transcript_path(payload) == "C:/tmp/session.jsonl"
 
