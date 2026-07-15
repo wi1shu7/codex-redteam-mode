@@ -16,7 +16,7 @@ for candidate in (HOOKS_DIR, CODEX_DIR):
 from core import build_redteam_mode_overlay, emit_hook_json, extract_prompt, extract_session_id, load_runtime_state, parse_mode_command, parse_opsec_command, resolve_model_prompt_profile, save_runtime_state
 from core.controller import process_turn
 from core.prompt_parser import decode_stdin
-from core.refusal_backstop import build_recent_refusal_overlay, payload_has_recent_refusal
+from core.refusal_backstop import build_recent_refusal_overlay
 from redteam_state import default_state
 
 
@@ -103,19 +103,21 @@ def main() -> None:
         codex_dir=CODEX_DIR,
         assistant_summary="",
     )
-    result.state.active_model = profile.model
-    result.state.active_prompt_profile = profile.profile
-    save_runtime_state(result.state, session_id=session_id)
+    next_state = result.state
+    next_state.active_model = profile.model
+    next_state.active_prompt_profile = profile.profile
     context = result.brief
     if profile.model != previous_model or profile.profile != previous_profile:
         model_overlay = profile.render()
         if model_overlay:
             context = f"{context}\n{model_overlay}"
-    if payload_has_recent_refusal(payload):
+    if state.pending_refusal_overlay:
         context = f"{context}\n{build_recent_refusal_overlay()}"
+        next_state = replace(next_state, pending_refusal_overlay=False)
     if result.overlay:
         context = f"{context}\n{result.overlay}"
-    print(emit_hook_json("UserPromptSubmit", context, inject_role_overlay=True, role_phase=result.state.phase))
+    save_runtime_state(next_state, session_id=session_id)
+    print(emit_hook_json("UserPromptSubmit", context, inject_role_overlay=True, role_phase=next_state.phase))
 
 
 if __name__ == "__main__":

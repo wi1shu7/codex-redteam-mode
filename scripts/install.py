@@ -15,7 +15,7 @@ except ModuleNotFoundError as exc:
     raise SystemExit(1) from exc
 APP_NAME='codex-redteam-optin-mode'; APP_VERSION='1.3.0'
 AGENTS_BLOCK_START='<!-- codex-redteam-optin-mode:start -->'; AGENTS_BLOCK_END='<!-- codex-redteam-optin-mode:end -->'
-SESSION_STATUS='Loading session mode context'; PROMPT_STATUS='Checking mode-gated offensive routing'
+SESSION_STATUS='Loading session mode context'; PROMPT_STATUS='Checking mode-gated offensive routing'; STOP_STATUS='Recording refusal backstop state'
 SYSTEM_INSTRUCTIONS_CONFIG_VALUE='./redteam-mode/system-instructions.md'
 SYSTEM_PROFILE_START='<!-- codex-redteam-system-profile:start -->'; SYSTEM_PROFILE_END='<!-- codex-redteam-system-profile:end -->'
 MODEL_CATALOG_START='<!-- codex-redteam-model-profiles:start -->'; MODEL_CATALOG_END='<!-- codex-redteam-model-profiles:end -->'
@@ -396,6 +396,8 @@ def build_hooks_payload(repo_root:Path,codex_home:Path)->dict:
         '{{SESSION_COMMAND_WINDOWS}}':build_windows_hook_command(python_cmd,hooks_dir/'session-start-context.py'),
         '{{PROMPT_COMMAND}}':shlex.join([python_cmd,'-B',str(hooks_dir/'hook-security-context-hook.py')]),
         '{{PROMPT_COMMAND_WINDOWS}}':build_windows_hook_command(python_cmd,hooks_dir/'hook-security-context-hook.py'),
+        '{{STOP_COMMAND}}':shlex.join([python_cmd,'-B',str(hooks_dir/'stop-refusal-hook.py')]),
+        '{{STOP_COMMAND_WINDOWS}}':build_windows_hook_command(python_cmd,hooks_dir/'stop-refusal-hook.py'),
     }
     rendered=src.read_text(encoding='utf-8-sig')
     for placeholder,command in commands.items(): rendered=rendered.replace(placeholder,json.dumps(command)[1:-1])
@@ -422,7 +424,7 @@ def remove_agents_block(agents_file:Path,dry_run:bool)->None:
     dst.write_text(updated+'\n', encoding='utf-8') if updated else dst.unlink()
 def is_managed_hook(hook:dict)->bool:
     command=str(hook.get('command','')); status=str(hook.get('statusMessage',''))
-    return 'session-start-context.py' in command or 'hook-security-context-hook.py' in command or status in {SESSION_STATUS, PROMPT_STATUS}
+    return 'session-start-context.py' in command or 'hook-security-context-hook.py' in command or 'stop-refusal-hook.py' in command or status in {SESSION_STATUS, PROMPT_STATUS, STOP_STATUS}
 def scrub_managed_hooks(payload:dict)->dict:
     hooks_root=payload.get('hooks',{}); cleaned={}
     for event, entries in hooks_root.items():
@@ -480,7 +482,7 @@ def run_validate(repo_root:Path,codex_home:Path,dry_run:bool,manifest_candidate:
 def repo_skill_dirs(repo_root:Path)->list[Path]:
     skills_root=repo_root/'agents'/'skills'; return sorted(path for path in skills_root.iterdir() if path.is_dir()) if skills_root.exists() else []
 def managed_targets(repo_root:Path,codex_home:Path,agents_home:Path)->list[Path]:
-    targets=[codex_home/'redteam-mode'/'system-instructions.md',codex_home/'redteam-mode'/'launcher.py',codex_home/'redteam-mode'/'codex-redteam.cmd',codex_home/'redteam-mode'/'codex-redteam',codex_home/'hooks'/'session-start-context.py',codex_home/'hooks'/'hook-security-context-hook.py',codex_home/'hooks'/'redteam_state.py',codex_home/'hooks'/'core',codex_home/'router',codex_home/'orchestrator',codex_home/'automation',codex_home/'session_patcher']
+    targets=[codex_home/'redteam-mode'/'system-instructions.md',codex_home/'redteam-mode'/'launcher.py',codex_home/'redteam-mode'/'codex-redteam.cmd',codex_home/'redteam-mode'/'codex-redteam',codex_home/'hooks'/'session-start-context.py',codex_home/'hooks'/'hook-security-context-hook.py',codex_home/'hooks'/'stop-refusal-hook.py',codex_home/'hooks'/'redteam_state.py',codex_home/'hooks'/'core',codex_home/'router',codex_home/'orchestrator',codex_home/'automation',codex_home/'session_patcher']
     targets.extend(agents_home/'skills'/skill_dir.name for skill_dir in repo_skill_dirs(repo_root)); return targets
 def legacy_cleanup_targets(codex_home:Path,agents_home:Path)->list[Path]:
     return [codex_home/'hooks'/'legacy-redteam-hook.py', agents_home/'skills'/'red-team-command-doctrine-old']
@@ -663,6 +665,7 @@ def main()->None:
         write_system_instructions(codex_home/'redteam-mode'/'system-instructions.md',system_instructions,args.dry_run); copy_file(repo_root/'codex'/'launcher.py',codex_home/'redteam-mode'/'launcher.py',args.dry_run); write_launcher_scripts(codex_home,args.dry_run); info(f"merge {repo_root/'config.toml'} -> {codex_home/'config.toml'}"); apply_config_merge(config_plan,args.dry_run); seed_prompt_files(repo_root,codex_home,args.dry_run); upsert_agents_file(repo_root,agents_file,args.dry_run)
         copy_file(repo_root/'codex'/'hooks'/'session-start-context.py', codex_home/'hooks'/'session-start-context.py', args.dry_run)
         copy_file(repo_root/'codex'/'hooks'/'hook-security-context-hook.py', codex_home/'hooks'/'hook-security-context-hook.py', args.dry_run)
+        copy_file(repo_root/'codex'/'hooks'/'stop-refusal-hook.py', codex_home/'hooks'/'stop-refusal-hook.py', args.dry_run)
         copy_file(repo_root/'codex'/'hooks'/'redteam_state.py', codex_home/'hooks'/'redteam_state.py', args.dry_run)
         copy_tree(repo_root/'codex'/'hooks'/'core', codex_home/'hooks'/'core', args.dry_run)
         copy_tree(repo_root/'codex'/'router', codex_home/'router', args.dry_run)
