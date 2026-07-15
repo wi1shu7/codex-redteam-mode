@@ -319,7 +319,7 @@ This project is intended **solely for authorized penetration testing, red team r
 
 ### Reference Projects
 
-Method layer, routing layer, and skill pack structure draw inspiration from:
+Jailbreak,Method layer, routing layer, and skill pack structure draw inspiration from:
 
 - [qiushi-skill](https://github.com/qiushi-L/qiushi-skill)
 - [yaklang/hack-skills](https://github.com/yaklang/hack-skills)
