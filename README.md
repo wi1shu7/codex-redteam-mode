@@ -154,48 +154,6 @@ $CODEX_HOME/redteam-mode/state
 ~/.codex/redteam-mode/state
 ```
 
-### What the Installer Does
-
-1. **Configuration preflight** — parses and plans both `config.toml` and `hooks.json` merges before copying or cleaning any files, so invalid existing configuration leaves the install untouched
-2. **Upgrade cleanup** — reads the formal manifest and any pending install transaction, preflights their combined managed targets against the current cleanup scope, then removes old/incomplete targets plus known legacy remnants
-3. **System instructions** — composes any existing user system instructions + `instruction.ctf.md` + the GPT-5.x profile routing catalog into `redteam-mode/system-instructions.md`, and points `model_instructions_file` to that generated file
-4. **Hooks** — deploys `session-start-context.py`, `hook-security-context-hook.py`, `redteam_state.py`, and `core/` to the selected Codex Home's `hooks/`
-5. **Subsystems** — deploys `router/`, `orchestrator/`, `automation/`, and `session_patcher/` to the selected Codex Home
-6. **Skill packs** — deploys all 36 SKILL.md domain cards from `agents/skills/` to the selected agents home (only `SKILL.md` is copied per skill directory)
-7. **Seed prompts** — copies prompt files to the selected Codex Home's `prompts/` directory (skips existing)
-8. **Merge hooks.json** — strips old managed hooks, then injects the current `SessionStart` and `UserPromptSubmit` hooks (preserves user-defined hooks)
-9. **Merge AGENTS.md** — injects or updates a managed block (`<!-- codex-redteam-optin-mode:start -->`) into the selected Codex Home's `AGENTS.md` as global guidance, or `<project>/AGENTS.md` with `--project-home` as project guidance (preserves user content outside the block)
-10. **Validate candidate** — runs `scripts/validate.py` against the deployed files and a candidate manifest, verifying every subsystem and the installed/runtime-selected skill roots
-11. **Commit manifest** — atomically replaces `redteam-install-manifest.json` and removes the pending transaction only after validation succeeds; failed deployments retain previous and candidate targets for retry or uninstall recovery
-
-### Upgrade & Idempotency
-
-The installer is **idempotent** — running it repeatedly is safe and will not duplicate hooks or AGENTS.md blocks.
-
-On each run, it reads the previous manifest, removes only project-managed files from the old install, then re-deploys from the current version. This means:
-- Version upgrades are clean without touching user-owned files
-- `config.toml` is merged instead of overwritten; existing user settings are preserved, and changed existing configs are backed up as `config.toml.YYYYMMDDHHMMSS.bak`
-- An existing user `model_instructions_file` is preserved as the first section of the generated system file; its original config value is recorded in the manifest and restored on uninstall
-- `config.toml` merging uses `tomlkit` so array tables such as `[[skills.config]]` do not receive keys meant for `[automation]`
-- The manifest records each `config.toml` value and table added by the installer; uninstall removes only unchanged installer-owned values before deleting referenced files, while user-modified values are preserved
-- Legacy manifests without field ownership metadata preserve `instruction.ctf.md` when `config.toml` still references it, avoiding a broken Codex profile after uninstall
-- Invalid existing `config.toml`, `hooks.json`, install manifests, or pending transactions fail during preflight before files are copied or previous paths are cleaned; UTF-8 BOM-prefixed config and hooks files are accepted consistently by installation and validation
-- POSIX hooks use shell-safe argument joining, while Windows hooks use encoded PowerShell commands so spaces, Unicode, quotes, and `cmd.exe` metacharacters in Python or Codex Home paths are not reinterpreted
-- Upgrades write a pending transaction before cleanup. Retry and uninstall reconcile the union of previous and candidate targets, and successful validation atomically commits the formal manifest and removes the transaction
-- GitHub Actions runs the full test suite on Windows, Ubuntu, and macOS with Python 3.11
-- Upgrade and uninstall cleanup abort before changing files when an existing managed path is outside the current scope; the manifest is preserved so the operation can be retried with the original path arguments
-- Custom `--agents-home` installs warn when runtime priority is not enabled, and validation reports when the runtime-selected skill root differs from the installed root
-- `SessionStart` and `UserPromptSubmit` output only Codex-supported wire fields; route phase remains inside `additionalContext` instead of being serialized as an unknown field
-- `SessionStart(source=resume|compact)` preserves the existing session mode, while `startup` and `clear` reset to normal
-- Red-team activation and `SessionStart(source=resume|compact)` inject the complete `Reverse.md` supplemental context directly; normal startup remains free of this mode-level overlay
-- Hook JSON is ASCII-safe on stdout, so Windows legacy code pages cannot corrupt the UTF-8 JSON protocol or Chinese context
-- Relative install arguments are resolved against the install command's working directory, and generated hooks and manifest fields use absolute paths
-- `copy_tree` replaces managed directories (`router/`, `orchestrator/`, etc.) wholesale; skill directories copy only `SKILL.md`
-- `AGENTS.md`, `hooks.json`, and `config.toml` are never deleted by upgrade cleanup — they use merge logic so user customizations survive
-- Project installs place the managed AGENTS block in `<project>/AGENTS.md`; old `<project>/.codex/AGENTS.md` managed blocks are migrated safely
-- Python cache files (`__pycache__`, `.pyc`, `.pyo`) are not copied into the installed runtime
-- If the manifest is missing, the installer falls back to cleaning the current target set plus known legacy paths
-
 ```bash
 # Safe to run repeatedly — same result each time
 python scripts/install.py
