@@ -13,7 +13,7 @@ except ModuleNotFoundError as exc:
         file=sys.stderr,
     )
     raise SystemExit(1) from exc
-APP_NAME='codex-redteam-optin-mode'; APP_VERSION='1.3.0'
+APP_NAME='codex-redteam-optin-mode'; APP_VERSION='1.3.0'; PROMPT_OWNERSHIP_VERSION=1
 AGENTS_BLOCK_START='<!-- codex-redteam-optin-mode:start -->'; AGENTS_BLOCK_END='<!-- codex-redteam-optin-mode:end -->'
 SESSION_STATUS='Loading session mode context'; PROMPT_STATUS='Checking mode-gated offensive routing'; STOP_STATUS='Recording refusal backstop state'
 SYSTEM_INSTRUCTIONS_CONFIG_VALUE='./redteam-mode/system-instructions.md'
@@ -275,7 +275,7 @@ def prepare_config_merge(src:Path,dst:Path,previous_config_merge:object=None,for
     existed_before=previous.get('existed_before') if isinstance(previous.get('existed_before'),bool) else dst.exists()
     metadata={'path':str(dst.resolve(strict=False)),'existed_before':existed_before,'added_values':_dedupe_owned_values(retained_values+added_values),'added_tables':_dedupe_owned_tables(retained_tables+added_tables),'replaced_values':_dedupe_replaced_values(replaced_values)}
     return dst,existing_text,merged,metadata
-def backup_config_file(dst:Path,dry_run:bool)->Path:
+def backup_file(dst:Path,dry_run:bool)->Path:
     backup=dst.with_name(f'{dst.name}.{datetime.now().strftime("%Y%m%d%H%M%S")}.bak')
     info(f'backup {dst} -> {backup}')
     if not dry_run: shutil.copy2(dst,backup)
@@ -283,7 +283,7 @@ def backup_config_file(dst:Path,dry_run:bool)->Path:
 def apply_config_merge(plan:tuple[Path,str,str,dict],dry_run:bool)->None:
     dst,existing_text,merged,_=plan
     if merged==existing_text: return
-    if dst.exists(): backup_config_file(dst,dry_run)
+    if dst.exists(): backup_file(dst,dry_run)
     if dry_run: return
     dst.parent.mkdir(parents=True, exist_ok=True); dst.write_text(merged,encoding='utf-8')
 def merge_config_file(src:Path,dst:Path,dry_run:bool)->None:
@@ -337,7 +337,7 @@ def prepare_config_removal(codex_home:Path,manifest_data:dict)->tuple[Path,str,s
 def apply_config_removal(plan:tuple[Path,str,str|None,bool],dry_run:bool)->None:
     dst,existing_text,rendered,_=plan
     if rendered==existing_text: return
-    if dst.exists(): backup_config_file(dst,dry_run)
+    if dst.exists(): backup_file(dst,dry_run)
     if dry_run: return
     if rendered is None:
         if dst.exists(): dst.unlink()
@@ -362,12 +362,26 @@ def managed_prompt_targets(repo_root:Path,codex_home:Path,owned_targets:list[Pat
     if not src_dir.exists(): return []
     owned={str(path.resolve(strict=False)) for path in owned_targets}
     return [dst_dir/src.name for src in src_dir.glob('*.md') if not (dst_dir/src.name).exists() or str((dst_dir/src.name).resolve(strict=False)) in owned]
-def seed_prompt_files(repo_root:Path,codex_home:Path,dry_run:bool)->None:
+def legacy_prompt_targets(repo_root:Path,codex_home:Path,owned_targets:list[Path],manifest_data:dict)->list[Path]:
+    if manifest_data.get('name')!=APP_NAME: return []
+    ownership_version=manifest_data.get('prompt_ownership_version')
+    if isinstance(ownership_version,int) and ownership_version>=PROMPT_OWNERSHIP_VERSION: return []
+    src_dir=repo_root/'codex'/'prompts'; dst_dir=codex_home/'prompts'
+    if not src_dir.exists(): return []
+    owned={str(path.resolve(strict=False)) for path in owned_targets}
+    return [dst_dir/src.name for src in src_dir.glob('*.md') if (dst_dir/src.name).is_file() and str((dst_dir/src.name).resolve(strict=False)) not in owned]
+def seed_prompt_files(repo_root:Path,codex_home:Path,dry_run:bool,legacy_targets:list[Path]|None=None)->None:
     src_dir=repo_root/'codex'/'prompts'; dst_dir=codex_home/'prompts'
     if not src_dir.exists(): return
+    legacy={str(path.resolve(strict=False)) for path in (legacy_targets or [])}
     for src in src_dir.glob('*.md'):
         dst=dst_dir/src.name
-        if dst.exists(): info(f'keep existing prompt {dst}'); continue
+        if dst.exists():
+            if str(dst.resolve(strict=False)) not in legacy: info(f'keep existing prompt {dst}'); continue
+            if src.read_bytes()==dst.read_bytes(): info(f'adopt matching legacy prompt {dst}'); continue
+            info(f'replace legacy prompt {src} -> {dst}'); backup_file(dst,dry_run)
+            if dry_run: continue
+            shutil.copy2(src,dst); continue
         info(f'seed prompt {src} -> {dst}')
         if dry_run: continue
         dst.parent.mkdir(parents=True, exist_ok=True); shutil.copy2(src,dst)
@@ -529,7 +543,7 @@ def load_manifest_targets(codex_home:Path)->list[Path]:
 def build_manifest_payload(codex_home:Path,agents_file:Path,agents_home:Path,targets:list[Path],log_root:Path,custom_skill_dirs_enabled:bool,config_merge:dict|None=None,system_prompt:dict|None=None)->dict:
     skills_root=agents_home/'skills'
     skill_dirs=[str(skills_root/path.name) for path in repo_skill_dirs(Path(__file__).resolve().parents[1])]
-    payload={'name':APP_NAME,'version':APP_VERSION,'manifest_schema_version':2,'installed_at':datetime.now().isoformat(timespec='seconds'),'managed_paths':[str(path) for path in targets],'merged_files':[str(agents_file),str(codex_home/'hooks.json'),str(codex_home/'config.toml')],'skills_paths':{'skills_root':str(skills_root),'skill_dirs':skill_dirs},'custom_skill_dirs_enabled':bool(custom_skill_dirs_enabled),'log_root':str(log_root),'config_merge':config_merge or {'path':str((codex_home/'config.toml').resolve(strict=False)),'existed_before':True,'added_values':[],'added_tables':[]}}
+    payload={'name':APP_NAME,'version':APP_VERSION,'manifest_schema_version':2,'prompt_ownership_version':PROMPT_OWNERSHIP_VERSION,'installed_at':datetime.now().isoformat(timespec='seconds'),'managed_paths':[str(path) for path in targets],'merged_files':[str(agents_file),str(codex_home/'hooks.json'),str(codex_home/'config.toml')],'skills_paths':{'skills_root':str(skills_root),'skill_dirs':skill_dirs},'custom_skill_dirs_enabled':bool(custom_skill_dirs_enabled),'log_root':str(log_root),'config_merge':config_merge or {'path':str((codex_home/'config.toml').resolve(strict=False)),'existed_before':True,'added_values':[],'added_tables':[]}}
     if system_prompt: payload['system_prompt']=dict(system_prompt)
     return payload
 def atomic_write_json(path:Path,payload:dict)->None:
@@ -653,16 +667,18 @@ def main()->None:
     config_plan=prepare_config_merge(repo_root/'config.toml', codex_home/'config.toml',ownership_data.get('config_merge') if ownership_data else None,{('model_instructions_file',):SYSTEM_INSTRUCTIONS_CONFIG_VALUE})
     hooks_plan=prepare_hooks_merge(repo_root,codex_home)
     pending_targets=transaction_targets(codex_home); previous_targets=_unique_cleanup_targets(load_manifest_targets(codex_home)+pending_targets)
-    system_instructions,system_prompt=build_system_instructions(repo_root,codex_home,system_model,system_model_source,user_reference,previous_targets); info(f"system prompt: model={system_model}; profile={system_prompt['profile']}; file={system_prompt['profile_file']}; user_base={user_reference or 'none'}")
+    legacy_prompts=legacy_prompt_targets(repo_root,codex_home,previous_targets,previous_manifest)
+    system_instructions,system_prompt=build_system_instructions(repo_root,codex_home,system_model,system_model_source,user_reference,_unique_cleanup_targets(previous_targets+legacy_prompts)); info(f"system prompt: model={system_model}; profile={system_prompt['profile']}; file={system_prompt['profile_file']}; user_base={user_reference or 'none'}")
     current_targets.extend(managed_prompt_targets(repo_root,codex_home,previous_targets))
     cleanup_targets=prepare_upgrade_cleanup(codex_home,agents_home,agents_file,current_targets,pending_targets)
+    current_targets.extend(legacy_prompts)
     candidate_manifest=build_manifest_payload(codex_home,agents_file,agents_home,current_targets,log_root,args.enable_custom_skill_dirs,config_plan[3],system_prompt)
     begin_transaction(codex_home,agents_home,previous_manifest,candidate_manifest,previous_targets,current_targets,args.dry_run)
     manifest_plan=None; deployed=False
     try:
         apply_upgrade_cleanup(cleanup_targets,args.dry_run)
         if agents_file != codex_home/'AGENTS.md': remove_agents_block(codex_home/'AGENTS.md',args.dry_run)
-        write_system_instructions(codex_home/'redteam-mode'/'system-instructions.md',system_instructions,args.dry_run); copy_file(repo_root/'codex'/'launcher.py',codex_home/'redteam-mode'/'launcher.py',args.dry_run); write_launcher_scripts(codex_home,args.dry_run); info(f"merge {repo_root/'config.toml'} -> {codex_home/'config.toml'}"); apply_config_merge(config_plan,args.dry_run); seed_prompt_files(repo_root,codex_home,args.dry_run); upsert_agents_file(repo_root,agents_file,args.dry_run)
+        write_system_instructions(codex_home/'redteam-mode'/'system-instructions.md',system_instructions,args.dry_run); copy_file(repo_root/'codex'/'launcher.py',codex_home/'redteam-mode'/'launcher.py',args.dry_run); write_launcher_scripts(codex_home,args.dry_run); info(f"merge {repo_root/'config.toml'} -> {codex_home/'config.toml'}"); apply_config_merge(config_plan,args.dry_run); seed_prompt_files(repo_root,codex_home,args.dry_run,legacy_prompts); upsert_agents_file(repo_root,agents_file,args.dry_run)
         copy_file(repo_root/'codex'/'hooks'/'session-start-context.py', codex_home/'hooks'/'session-start-context.py', args.dry_run)
         copy_file(repo_root/'codex'/'hooks'/'hook-security-context-hook.py', codex_home/'hooks'/'hook-security-context-hook.py', args.dry_run)
         copy_file(repo_root/'codex'/'hooks'/'stop-refusal-hook.py', codex_home/'hooks'/'stop-refusal-hook.py', args.dry_run)

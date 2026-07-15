@@ -1666,6 +1666,7 @@ def test_manifest_tracks_config_as_merged_file(tmp_path: Path) -> None:
     assert payload["custom_skill_dirs_enabled"] is False
     assert payload["log_root"] == str(codex_home / "logs" / "codex-redteam")
     assert payload["manifest_schema_version"] == 2
+    assert payload["prompt_ownership_version"] == install.PROMPT_OWNERSHIP_VERSION
     assert payload["config_merge"]["path"] == str(codex_home / "config.toml")
 
 
@@ -2003,6 +2004,176 @@ def test_prompt_seeds_track_only_installer_created_files_across_reinstall(tmp_pa
     assert user_prompt.read_text(encoding="utf-8") == "user-owned prompt\n"
     assert not (prompts_dir / "do_special.md").exists()
     assert not (prompts_dir / "system-prompt.md").exists()
+
+
+def test_upgrade_adopts_untracked_legacy_prompt_with_backup(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    codex_home = project / ".codex"
+    prompts_dir = codex_home / "prompts"
+    prompts_dir.mkdir(parents=True)
+    legacy_prompt = prompts_dir / "Reverse.md"
+    legacy_prompt.write_text("legacy prompt content\n", encoding="utf-8")
+    install.manifest_path(codex_home).write_text(
+        json.dumps(
+            {
+                "name": install.APP_NAME,
+                "version": "1.2.0",
+                "managed_paths": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    command = [sys.executable, str(INSTALL_PATH), "--project-home", str(project)]
+
+    subprocess.run(command, cwd=REPO_ROOT, check=True, stdout=subprocess.DEVNULL)
+
+    backups = list(prompts_dir.glob("Reverse.md.*.bak"))
+    assert len(backups) == 1
+    assert backups[0].read_text(encoding="utf-8") == "legacy prompt content\n"
+    assert legacy_prompt.read_text(encoding="utf-8").strip() == REVERSE_PROMPT
+    payload = json.loads(install.manifest_path(codex_home).read_text(encoding="utf-8"))
+    assert str(legacy_prompt) in payload["managed_paths"]
+
+    subprocess.run(command, cwd=REPO_ROOT, check=True, stdout=subprocess.DEVNULL)
+
+    assert len(list(prompts_dir.glob("Reverse.md.*.bak"))) == 1
+    assert legacy_prompt.read_text(encoding="utf-8").strip() == REVERSE_PROMPT
+
+
+def test_upgrade_builds_system_instructions_from_adopted_legacy_profiles(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    codex_home = project / ".codex"
+    prompts_dir = codex_home / "prompts"
+    prompts_dir.mkdir(parents=True)
+    legacy_profile = prompts_dir / "Jailbreak.default.md"
+    legacy_profile.write_text("legacy profile content\n", encoding="utf-8")
+    install.manifest_path(codex_home).write_text(
+        json.dumps(
+            {
+                "name": install.APP_NAME,
+                "version": "1.2.0",
+                "managed_paths": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    subprocess.run(
+        [sys.executable, str(INSTALL_PATH), "--project-home", str(project)],
+        cwd=REPO_ROOT,
+        check=True,
+        stdout=subprocess.DEVNULL,
+    )
+
+    generated = (codex_home / "redteam-mode" / "system-instructions.md").read_text(
+        encoding="utf-8"
+    )
+    metadata = json.loads(
+        generated.split(install.SYSTEM_PROFILE_START, 1)[1]
+        .split(install.SYSTEM_PROFILE_END, 1)[0]
+        .strip()
+    )
+    bundled = (CODEX_PATH / "prompts" / "Jailbreak.default.md").read_text(
+        encoding="utf-8-sig"
+    ).strip()
+    assert metadata["profile_sha256"] == install._sha256_text(bundled)
+    assert metadata["profile_sha256"] != install._sha256_text("legacy profile content")
+
+
+def test_upgrade_adopts_matching_untracked_legacy_prompt_without_backup(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    codex_home = project / ".codex"
+    prompts_dir = codex_home / "prompts"
+    prompts_dir.mkdir(parents=True)
+    legacy_prompt = prompts_dir / "Reverse.md"
+    legacy_prompt.write_bytes((CODEX_PATH / "prompts" / "Reverse.md").read_bytes())
+    install.manifest_path(codex_home).write_text(
+        json.dumps(
+            {
+                "name": install.APP_NAME,
+                "version": "1.2.0",
+                "managed_paths": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    subprocess.run(
+        [sys.executable, str(INSTALL_PATH), "--project-home", str(project)],
+        cwd=REPO_ROOT,
+        check=True,
+        stdout=subprocess.DEVNULL,
+    )
+
+    assert not list(prompts_dir.glob("Reverse.md.*.bak"))
+    assert legacy_prompt.read_text(encoding="utf-8").strip() == REVERSE_PROMPT
+    payload = json.loads(install.manifest_path(codex_home).read_text(encoding="utf-8"))
+    assert str(legacy_prompt) in payload["managed_paths"]
+
+
+def test_upgrade_legacy_prompt_dry_run_only_reports_changes(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    codex_home = project / ".codex"
+    prompts_dir = codex_home / "prompts"
+    prompts_dir.mkdir(parents=True)
+    legacy_prompt = prompts_dir / "Reverse.md"
+    legacy_prompt.write_text("legacy prompt content\n", encoding="utf-8")
+    manifest = install.manifest_path(codex_home)
+    manifest.write_text(
+        json.dumps(
+            {
+                "name": install.APP_NAME,
+                "version": "1.2.0",
+                "managed_paths": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    original_manifest = manifest.read_bytes()
+
+    result = subprocess.run(
+        [sys.executable, str(INSTALL_PATH), "--project-home", str(project), "--dry-run"],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert "replace legacy prompt" in result.stdout
+    assert "backup" in result.stdout
+    assert legacy_prompt.read_text(encoding="utf-8") == "legacy prompt content\n"
+    assert not list(prompts_dir.glob("Reverse.md.*.bak"))
+    assert manifest.read_bytes() == original_manifest
+
+
+def test_install_does_not_adopt_prompt_from_foreign_manifest(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    codex_home = project / ".codex"
+    prompts_dir = codex_home / "prompts"
+    prompts_dir.mkdir(parents=True)
+    user_prompt = prompts_dir / "Reverse.md"
+    user_prompt.write_text("user-owned prompt\n", encoding="utf-8")
+    install.manifest_path(codex_home).write_text(
+        json.dumps(
+            {
+                "name": "different-installer",
+                "managed_paths": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    subprocess.run(
+        [sys.executable, str(INSTALL_PATH), "--project-home", str(project)],
+        cwd=REPO_ROOT,
+        check=True,
+        stdout=subprocess.DEVNULL,
+    )
+
+    assert user_prompt.read_text(encoding="utf-8") == "user-owned prompt\n"
+    assert not list(prompts_dir.glob("Reverse.md.*.bak"))
+    payload = json.loads(install.manifest_path(codex_home).read_text(encoding="utf-8"))
+    assert str(user_prompt) not in payload["managed_paths"]
 
 
 def test_project_home_migrates_old_dot_codex_agents_block(tmp_path: Path) -> None:
