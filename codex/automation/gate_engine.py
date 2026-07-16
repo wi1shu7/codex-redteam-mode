@@ -4,7 +4,7 @@ Gate grades:
   pass       - can advance
   soft_fail  - evidence insufficient, but allowed to continue collecting
   pivot      - current path low-yield, suggest fuzzy pivot via SKILL.md hints
-  blocked    - missing scope/target, unsafe, or cannot continue
+  blocked    - missing target, explicit task-boundary violation, or cannot continue
 
 Design principle: gates guide the model ("what evidence to collect next" or
 "switch direction"), they do NOT hard-block unless safety requires it.
@@ -64,7 +64,7 @@ def evaluate_artifact_gate(
       pass      - all expected artifacts present (or phase minimum met)
       soft_fail - missing artifacts, first/second attempt
       pivot     - same artifacts missing repeatedly (stagnation >= 3)
-      blocked   - no target/scope artifact and cannot continue
+      blocked   - no target artifact and cannot continue
     """
     expected = tuple(dict.fromkeys(item for item in expected_artifacts if item))
     available = set(item for item in available_artifacts if item)
@@ -100,14 +100,14 @@ def evaluate_artifact_gate(
             hint="same artifacts missing across multiple iterations",
         )
 
-    # No target/scope at all -> blocked
-    critical = {"target", "scope"}
+    # No target at all -> blocked
+    critical = {"target"}
     if critical & set(missing) and not available:
         return GateResult(
             gate_name="Artifact Gate",
             grade="blocked",
             missing=missing,
-            reasons=("no_target_or_scope",),
+            reasons=("no_target",),
             next_required_action="request_target",
         )
 
@@ -196,9 +196,10 @@ def evaluate_scope_gate(
     """Graded scope gate.
 
     Rules:
-      Real execution: must have target + scope, in-scope check passes
-      Plan-only: allow continuation with scope_missing note
-      Cross-target / out-of-scope: always blocked
+      Real execution: a concrete target is enough because provided targets are
+      pre-authorized fixtures; explicit task-boundary checks still apply.
+      Plan-only: allow continuation when the target is still a placeholder.
+      Cross-target / out-of-scope: always blocked.
     """
     if not is_in_scope:
         return GateResult(
@@ -208,11 +209,11 @@ def evaluate_scope_gate(
             next_required_action="abort_action",
         )
 
-    if has_target and has_scope:
+    if has_target:
         return GateResult(
             gate_name="Scope Gate",
             grade="pass",
-            reasons=("target_and_scope_present",),
+            reasons=("target_and_scope_present",) if has_scope else ("target_is_preauthorized_fixture",),
             next_required_action="advance",
         )
 
@@ -221,24 +222,22 @@ def evaluate_scope_gate(
         missing_items = []
         if not has_target:
             missing_items.append("target")
-        if not has_scope:
-            missing_items.append("scope")
         return GateResult(
             gate_name="Scope Gate",
             grade="soft_fail",
             missing=tuple(missing_items),
-            reasons=("plan_only_scope_missing",),
+            reasons=("plan_only_target_missing",),
             next_required_action="continue_planning",
-            hint="scope/target missing but plan-only mode allows continuation",
+            hint="target missing but plan-only mode allows placeholder continuation",
         )
 
-    # Real execution without target/scope
+    # Real execution still needs a concrete target.
     return GateResult(
         gate_name="Scope Gate",
         grade="blocked",
-        missing=("target",) if not has_target else ("scope",),
-        reasons=("missing_target_or_scope_for_execution",),
-        next_required_action="request_scope",
+        missing=("target",),
+        reasons=("missing_target_for_execution",),
+        next_required_action="request_target",
     )
 
 

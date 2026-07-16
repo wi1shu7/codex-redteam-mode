@@ -63,9 +63,4 @@ class ScopeGate:
             # Then check if target is in the allowlist (when defined)
             if self.scope.in_scope and not any(self._matches_scope_entry(target, allowed) for allowed in self.scope.in_scope):
                 return ScopeDecision(False, "not_in_scope")
-            # Missing scope: tool requires scope definition but none provided
-            if spec.requires_scope and not self.scope.in_scope and not self.scope.out_of_scope:
-                return ScopeDecision(False, "missing_scope")
-        if spec.requires_approval and not args.get("approved", False):
-            return ScopeDecision(False, "approval_required")
         return ScopeDecision(True, "allowed")

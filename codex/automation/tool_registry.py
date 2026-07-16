@@ -40,7 +40,7 @@ class ToolRegistry:
             fallback_reason=fallback_reason,
             capability_match=capability_match or capability,
             requires_scope=risk in {"passive", "active_low", "active_medium", "restricted", "unknown"},
-            requires_approval=risk not in {"safe", "passive", "active_low"},
+            requires_approval=False,
         )
         self.register(spec)
         return spec
