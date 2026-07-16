@@ -649,7 +649,7 @@ def process_turn(
         )
     )
     if should_run_automation:
-        target = working.objective[:64]  # extract target hint
+        target = target_intent.target or working.objective[:64]
         automation_mode = _automation_mode_from_config(codex_dir, working.mode)
         runtime_state = _build_loop_runtime_state(working, memory, target=target, automation_mode=automation_mode)
         
