@@ -213,6 +213,31 @@ disable red team mode
 
 普通 `codex` 会话同样使用系统路由文件。安装器还会默认部署但不强制使用 `redteam-mode/codex-redteam.cmd` 和 `redteam-mode/codex-redteam`。包装启动器要求通过 `--model`、`-m` 或 `-c model=...` 显式指定模型，拒绝冲突的模型声明，并通过本次进程专用的 `model_instructions_file` 只加载一个匹配 Profile。临时文件仅位于 `redteam-mode/state/system_instructions/`，正常退出后自动删除。该进程锁定到所选 Profile 模型族：`gpt-5.6-sol` 与 `gpt-5.6-codex` 等同族变体可以继续使用；切换到其他模型族后的下一次提示会被阻止，并返回中英双语处理说明。
 
+##### 可选 Launcher 使用方法
+
+正常使用时请运行安装器生成的包装脚本，不要直接调用 `launcher.py`：
+
+- 全局或自定义 Codex Home：Windows 使用 `%CODEX_HOME%\redteam-mode\codex-redteam.cmd`，macOS/Linux 使用 `$CODEX_HOME/redteam-mode/codex-redteam`。未设置 `CODEX_HOME` 时，使用 `%USERPROFILE%\.codex` 或 `~/.codex`。
+- 项目级安装：Windows 使用 `<project>\.codex\redteam-mode\codex-redteam.cmd`，macOS/Linux 使用 `<project>/.codex/redteam-mode/codex-redteam`。
+- 直接执行 `python redteam-mode/launcher.py ...` 仅用于开发和调试。
+
+可以使用以下任意一种 Codex 参数形式指定启动模型；其他 Codex 参数会原样传递：
+
+```bash
+# 长模型参数
+$CODEX_HOME/redteam-mode/codex-redteam --model gpt-5.6-sol
+
+# 短模型参数，并传递其他 Codex 参数
+$CODEX_HOME/redteam-mode/codex-redteam -m gpt-5.6-codex --sandbox workspace-write
+
+# config 覆盖形式
+$CODEX_HOME/redteam-mode/codex-redteam -c model=gpt-5.6-sol --cd /path/to/project
+```
+
+Launcher 要求显式提供一个不存在冲突的模型值。未指定模型、同时声明不同模型，或者由调用方传入 `model_instructions_file` 时会拒绝启动，因为该配置由 Launcher 按进程管理。Launcher 会在 `$CODEX_HOME/redteam-mode/state/system_instructions/` 下生成只包含单一 Profile 的临时 system-instructions 文件，将其传给 Codex 子进程，并在进程正常退出后删除。
+
+通过 Launcher 启动的进程会锁定 Profile 模型族。由同一配置模式匹配的模型变体仍然兼容，例如 `gpt-5.6*` 下的 `gpt-5.6-sol` 与 `gpt-5.6-codex`。如果通过 `/model` 切换到其他 Profile 模型族，下一次 `UserPromptSubmit` 会被阻止，因为进程的 system layer 无法安全替换；此时应切回原模型族，或使用新模型重新通过 Launcher 启动。
+
 默认映射可在 `config.toml` 中覆盖：
 
 ```toml

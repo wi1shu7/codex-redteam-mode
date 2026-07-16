@@ -212,6 +212,31 @@ After installation, open Codex App normally. The static `model_instructions_file
 
 Ordinary `codex` sessions also use the system router. The installer additionally deploys the optional `redteam-mode/codex-redteam.cmd` and `redteam-mode/codex-redteam` wrappers. The wrapper requires an explicit `--model`, `-m`, or `-c model=...`, rejects conflicting model declarations, and loads only the matching profile through a process-local `model_instructions_file` override. Temporary files live under `redteam-mode/state/system_instructions/` and are removed after normal process exit. The launched process is locked to the selected profile family: compatible variants such as `gpt-5.6-sol` and `gpt-5.6-codex` are allowed, while the next prompt after switching to another profile family is blocked with a bilingual remediation message.
 
+##### Optional Launcher Usage
+
+Use the installed wrapper rather than invoking `launcher.py` directly:
+
+- Global or custom Codex Home: `%CODEX_HOME%\redteam-mode\codex-redteam.cmd` on Windows, or `$CODEX_HOME/redteam-mode/codex-redteam` on macOS/Linux. When `CODEX_HOME` is unset, use `%USERPROFILE%\.codex` or `~/.codex`.
+- Project-level install: `<project>\.codex\redteam-mode\codex-redteam.cmd` on Windows, or `<project>/.codex/redteam-mode/codex-redteam` on macOS/Linux.
+- Direct `python redteam-mode/launcher.py ...` execution is intended only for development and debugging.
+
+Specify the launch model with any one of the supported Codex forms. All unrelated Codex arguments are forwarded unchanged:
+
+```bash
+# Long model option
+$CODEX_HOME/redteam-mode/codex-redteam --model gpt-5.6-sol
+
+# Short model option plus other Codex arguments
+$CODEX_HOME/redteam-mode/codex-redteam -m gpt-5.6-codex --sandbox workspace-write
+
+# Config override form
+$CODEX_HOME/redteam-mode/codex-redteam -c model=gpt-5.6-sol --cd /path/to/project
+```
+
+The launcher requires an explicit, non-conflicting model value. It rejects missing or conflicting model declarations and caller-supplied `model_instructions_file` overrides because that setting is managed per process. It creates a single-profile temporary system-instructions file under `$CODEX_HOME/redteam-mode/state/system_instructions/`, passes it to the child Codex process, and deletes it after normal process exit.
+
+The selected process is profile-family locked. Model variants matched by the same configured pattern, such as `gpt-5.6-sol` and `gpt-5.6-codex` under `gpt-5.6*`, remain compatible. If `/model` switches to a different profile family, the next `UserPromptSubmit` is blocked because the process system layer cannot be replaced safely; switch back to the original family or restart through the launcher with the new model.
+
 Override the default mapping in `config.toml`:
 
 ```toml
