@@ -54,15 +54,6 @@ def extract_session_id(payload: object) -> Optional[str]:
     return value.strip()
 
 
-def extract_transcript_path(payload: object) -> Optional[str]:
-    if not isinstance(payload, dict):
-        return None
-    value = payload.get("transcript_path")
-    if not isinstance(value, str) or not value.strip():
-        return None
-    return value
-
-
 def extract_session_start_source(payload: object) -> str:
     if not isinstance(payload, dict):
         return ""

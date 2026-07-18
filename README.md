@@ -1,12 +1,12 @@
-# Codex Red Team Opt-In Mode
+# Codex Red-Team Opt-In Mode
 
-[中文说明](./README_ZH.md)
+[中文](./README_ZH.md)
 
-**Current release:** v1.3.0
+**Current version: v2.0.0**
 
-> Structured red-team routing is off by default and must be enabled explicitly. The base `instruction.ctf.md` security profile remains active in every mode.
+> Normal mode remains the default. The durable red-team operation runtime starts only after explicit activation, while the system-layer base instructions and active model profile remain loaded in every mode.
 
-A lightweight, evidence-driven red team runtime/configuration layer for Codex. In normal mode, the base `instruction.ctf.md` profile remains active while additional prepoison context, structured `phase -> router -> pack -> leaf` routing, and the automation loop stay off. Explicitly enabling red-team mode activates those additional runtime layers.
+An opt-in, durable red-team runtime for Codex App and Codex CLI. It compiles each objective into a criteria-bearing `GoalContract`, executes typed `WorkflowSpec` graphs through live MCP tools, preserves verified evidence, and reaches successful terminal state only after `TerminalJudge` proves every criterion.
 
 ## Usage Instructions
 
@@ -46,269 +46,126 @@ Before using this project, you should read the [README](./README_ZH.md) file com
 This project is **only for authorized penetration testing, red team research, and defensive security experiments**. Users must obtain proper authorization before testing any systems they don't own. The author assumes no responsibility for unauthorized or illegal use.
 
 ## Why This Project
+## Motivation
 
-Two common pitfalls in AI-assisted security work:
+Codex can use many security tools, but long-running workflows are vulnerable to session interruption, tool variance, manual result relay, and false completion based on a tool success flag. This project unifies objectives, actions, evidence, recovery, and terminal judgment in one durable execution path:
 
-1. **Uncontrolled structured routing** — phase, pack, automation, or refusal-backstop context activates without an explicit mode command.
-2. **Context bloat** — heavy injection of offensive doctrine increases token cost without improving routing quality.
+```text
+GoalContract
+  -> WorkflowSpec
+  -> Durable Scheduler
+  -> ToolBroker
+  -> SemanticVerifier
+  -> EvidenceGraph
+  -> TerminalJudge
+```
 
-This project keeps the structured runtime opt-in: normal mode retains the base `instruction.ctf.md` profile but does not inject additional prepoison, refusal-backstop, phase, pack, or automation context. When explicitly enabled, SKILL.md Loop Runtime domain cards declare scope, boundaries, and exit evidence, while the 5-Phase engine drives evidence-based progression.
+Version 2.0.0 removes the former `phase -> router -> pack -> leaf` runtime, regex domain routers, Markdown exit gates, and the second Automation state machine. Domain names now act only as asset and technique metadata rather than control-plane branches.
 
 ## Core Features
 
-- **Three explicit modes**: `normal` (default), `redteam-light` (targeted analysis/planning), `redteam-full` (constrained red team workflow)
-- **Structured JSON runtime state** with session-isolated state files
-- **Model-aware prompt switching** — resolves the active model from hook payload, session `turn_context`, environment, or `config.toml`, then injects the matching jailbreak profile when the model changes
-- **Rule-first phase detection** with semantic fallback for ambiguous tasks
-- **Pack-first routing mainline**: `phase → router → pack → leaf` — method is a soft hint, not the primary routing axis
-- **SKILL.md Loop Runtime domain cards** — pure Markdown `scope-not-instruct` format: each card has `## Domain` (scope declaration), `## Boundaries` (forbidden actions), `## Pivot Hints` (direction changes), `## Exit Evidence` (required artifacts and minimum attempts) — no YAML, no JSON
-- **Graded feedback gates** — four-level gate decisions: `pass` (advance), `soft_fail` (retry/adjust), `pivot` (change path), `blocked` (halt for human)
-- **Dedicated routing layer** — regex-based router engine (Chinese + English patterns), fine-grained sub-routers per domain (5 web, 4 AD, 6 crypto, 5 network, 3 mobile), external skill adapters (ACS/hackskills/qiushi)
-- **Lightweight hooks** — activation engine, context prepoison, intent engine, loop engine, phase detector, semantic fallback, state manager, refusal backstop, strict Codex wire output, and resume-safe session state
-- **Session patcher** — two-tier refusal detector (strong phrases + weak openers in Chinese + English), JSONL session cleaner with auto-backup and optional AI-powered rewrite
-- **Bounded Loop Runtime** — each decision exposes a trigger, feedback gate, and exit condition so the agent can adjust pace before advancing
-- **Artifact/gate-based progression** — prove one path before expanding, distinguish facts from assumptions
-- **Automation Loop Runtime** — reads local MCP/tool inventory, derives required capabilities, runs scoped registered adapters, saves artifacts, and feeds gate decisions
-- **Tool preference model**: prefer 5 practical tool classes (WebFetch, Browser MCP, IDA MCP, JADX MCP, Current AI Agent), fall back to equivalent local tools when needed
-- **Managed incremental installer** — Python-based, preserves existing AGENTS.md and hooks.json, injects only managed blocks, supports `--uninstall` and idempotent upgrades
-
-## Coverage Scenarios
-
-### Core Phases
-
-| Phase | Coverage |
-|-------|----------|
-| **Web** | Web exploitation, injection, SSRF, XSS, CSRF, deserialization |
-| **AD** | Active Directory enumeration, Kerberoasting, delegation, trusts |
-| **Post-Exploitation** | Persistence, lateral movement, privilege escalation, data exfiltration |
-| **Reverse Engineering** | Binary analysis, protocol reversing, firmware extraction |
-| **Code Audit** | Static analysis, vulnerability discovery, patch diffing |
-| **Payload** | Generation, encoding, obfuscation, staging |
-| **Evasion** | EDR/AV bypass, log tampering, indicator removal |
-
-### Extended Router/Pack Families
-
-| Domain | Detail Pack |
-|--------|-------------|
-| **Recon** | OSINT, network discovery, service enumeration |
-| **API** | REST/GraphQL fuzzing, auth bypass, rate-limit evasion |
-| **Auth** | OAuth, JWT, SAML, Kerberos, NTLM attack surfaces |
-| **Injection** | SQL, LDAP, XPath, template, command injection variants |
-| **File** | Upload attacks, path traversal, LFI/RFI, file parsing bugs |
-| **Business Logic** | Workflow abuse, race conditions, privilege boundary violations |
-| **Cloud** | AWS/Azure/GCP IAM, serverless, storage, metadata services |
-| **Container / Kubernetes** | Escape, pod lateral movement, supply chain, misconfigured RBAC |
-| **Network / Protocol** | MITM, ARP/DNS poisoning, BGP hijack, protocol fuzzing |
-| **Crypto** | Weak cipher suites, padding oracles, nonce reuse, side channels |
-| **Mobile** | APK/IPA analysis, certificate pinning bypass, deep link abuse |
+- **Explicit activation**: `normal` is always the default, and red-team operations start only after a mode command.
+- **Typed execution**: eight versioned TOML workflows cover web/API, external assessment, source review, binary/mobile, identity/cloud, adversary emulation, model security, and generic adaptive operations.
+- **Live tool collaboration**: tools are discovered through stdio or Streamable HTTP MCP; Host-only capabilities execute against an output contract and submit observations without user relay.
+- **Durability and batch autonomy**: SQLite WAL, events, leases, idempotency keys, and independent run IDs support recovery, concurrency control, multi-target batches, and cancellation cleanup.
+- **Evidence-driven completion**: only semantically verified results with target binding, parent lineage, reproduction, impact, coverage, and rollback proof can satisfy `TerminalJudge`.
 
 ## Installation
 
-### Python (cross-platform)
+### Install Commands
 
-Requires Python 3.11+ and the dependencies in `requirements.txt`. The installer uses `tomlkit` for round-trip `config.toml` merging.
+From the repository root, install dependencies and deploy to the current user Codex Home:
 
 ```bash
 python -m pip install -r requirements.txt
+python scripts/install.py
 ```
 
+The installer detects the model from the environment, target config, or existing manifest; `--model` is normally unnecessary.
+
+Project-local installation:
+
 ```bash
-python scripts/install.py
+python scripts/install.py --project-home PATH
+```
+
+Custom Skill and durable operation roots:
+
+```bash
+python scripts/install.py --project-home PATH --agents-home AGENTS_PATH --enable-custom-skill-dirs --log-root OPERATION_PATH
 ```
 
 ### Options
 
 | Option | Description |
-|--------|-------------|
-| `--project-home PATH` | Project-level install root. Writes Codex files to `PATH/.codex`, skills to `PATH/.agents/skills` unless `--agents-home` is set, and project guidance to `PATH/AGENTS.md` |
-| `--agents-home PATH` | Skill installation destination (default: `~/.agents`, or `PATH/.agents` with `--project-home`). For a custom runtime directory, also use `--enable-custom-skill-dirs` |
-| `--codex-home PATH` | Custom installation target for Codex Home/profile files (default: `~/.codex`). Writes `PATH/AGENTS.md` as global guidance; use `--project-home` for project guidance. Do not combine with `--project-home` |
-| `--model MODEL` | Select the model-specific system prompt profile for this installation; overrides environment and config detection |
-| `--log-root PATH` | Custom automation log root recorded in the install manifest |
-| `--enable-custom-skill-dirs` | Prioritize the manifest-recorded custom skill directory at runtime |
-| `--dry-run` | Preview all operations without writing any files |
-| `--uninstall` | Remove all managed files, hooks, and AGENTS.md blocks |
+|---|---|
+| `--codex-home PATH` | Install into a specific Codex Home/profile; its `AGENTS.md` provides global guidance |
+| `--project-home PATH` | Install under `PATH/.codex` and `PATH/.agents`, and manage the project-root `AGENTS.md`; mutually exclusive with `--codex-home` |
+| `--agents-home PATH` | Select the Skill destination; custom roots should also use `--enable-custom-skill-dirs` |
+| `--enable-custom-skill-dirs` | Prefer the manifest-recorded custom Skill directory at runtime |
+| `--log-root PATH` | Select the durable root for SQLite state, events, and evidence artifacts |
+| `--model MODEL` | Optional: override automatic detection and explicitly select the installation-time system profile |
+| `--dry-run` | Preview installation, upgrade, or uninstall actions without writing files |
+| `--uninstall` | Remove manifest-managed files, Hooks, config values, and `AGENTS.md` blocks |
 
 ```bash
-# Preview before install
-python scripts/install.py --dry-run
+# Preview a project-local installation
+python scripts/install.py --project-home PATH --dry-run
 
-# Custom Codex Home/profile install
-python scripts/install.py --codex-home /opt/codex/home
-
-# Explicitly compose the GPT-5.6 system instructions
-python scripts/install.py --model gpt-5.6-codex
-
-# Start a new session with automatic prompt selection from --model
-%CODEX_HOME%\redteam-mode\codex-redteam.cmd --model gpt-5.6-sol
-
-# macOS / Linux
-$CODEX_HOME/redteam-mode/codex-redteam --model gpt-5.6-sol
-
-# Project-level install, including project AGENTS.md
-python scripts/install.py --project-home /path/to/project
-
-# Project-level install with shared skills directory
-python scripts/install.py --project-home /path/to/project --agents-home /path/to/agents --enable-custom-skill-dirs
-
-# Project-level install with custom runtime log root
-python scripts/install.py --project-home /path/to/project --log-root /path/to/logs
-
-# Full uninstall
+# Uninstall a user-level deployment
 python scripts/install.py --uninstall
 
-# Uninstall a project install that used a shared skills directory
-python scripts/install.py --project-home /path/to/project --agents-home /path/to/agents --uninstall
+# Uninstall a project-local deployment
+python scripts/install.py --project-home PATH --uninstall
 ```
 
-Use `--project-home /path/to/project` for project-level installs. Do not use `--codex-home /path/to/project/.codex` as a substitute: that installs into a Codex Home/profile, so `AGENTS.md` is treated as global guidance for that profile rather than as project-root guidance.
+### Runtime State Locations
 
-`--agents-home` controls where skill cards are installed. When it points to a custom shared directory, add `--enable-custom-skill-dirs` to make the runtime prioritize that directory. Repeat the original `--project-home`, `--codex-home`, and `--agents-home` scope when upgrading or uninstalling; cleanup stops before changing files if existing managed paths fall outside the current scope.
-
-### Runtime State Location
-
-Red-team session state and memory are not stored in the install manifest or project directory. At runtime they use:
+The default operation root is:
 
 ```text
-$CODEX_HOME/redteam-mode/state/sessions/<session_id>.json
-$CODEX_HOME/redteam-mode/state/memory/<session_id>.json
+$CODEX_HOME/redteam-mode/operations/
+├── runtime.sqlite3
+└── artifacts/<run-id>/*.json
 ```
 
-When `CODEX_HOME` is unset, `$CODEX_HOME` above means `~/.codex`. The `--codex-home` installer option only selects where files are installed; for a custom install, it is recommended to launch Codex with the same environment value:
+Hook session state is stored under `$CODEX_HOME/redteam-mode/state/sessions`. Use `--log-root OPERATION_PATH` to relocate operation data. Status responses inline no more than 64 KiB of evidence; larger verified payloads are fetched with `redteam_evidence`, and each evidence payload is capped at 4 MiB.
 
-```bash
-CODEX_HOME=/opt/codex/home codex
-```
+Upgrade and uninstall preserve runtime session, memory, and operation data for recovery, auditing, or manual cleanup.
 
-Running without the matching environment variable is supported, but runtime state then falls back to `~/.codex`. State files are keyed by Codex session ID, so unrelated sessions are not expected to collide.
+### What the Installer Does
 
-`--project-home` does not make runtime state project-local. Project installs also use the active `CODEX_HOME`, or `~/.codex` when it is unset. Different Codex config profiles under the same `CODEX_HOME` share this state root while remaining separated by session ID.
-
-Uninstall removes managed project/plugin files but intentionally keeps session state and memory. If manual cleanup is desired, remove one of these roots after confirming the active Codex Home:
-
-```text
-$CODEX_HOME/redteam-mode/state
-~/.codex/redteam-mode/state
-```
-
-```bash
-# Safe to run repeatedly — same result each time
-python scripts/install.py
-python scripts/install.py   # second run: cleanup → fresh deploy → same state
-```
+- Preserves existing user configuration and manages only installer-owned fields and files.
+- Merges `config.toml`, Hooks, the system-layer model profile catalog, Runtime MCP server, workflows, and the single boundary Skill.
+- Deploys a candidate through a pending transaction and commits the manifest only after operational validation passes.
+- Preflights invalid manifests, TOML, Hook config, and out-of-scope managed paths before upgrade cleanup.
+- Removes only unchanged managed content during uninstall while preserving user-modified config, prompts, Hooks, and `AGENTS.md` content.
 
 ## Quick Start
 
-### Enable Red Team Mode
+1. Complete installation and restart Codex App or Codex CLI.
+2. Start a new task and submit `/redteam on`, `/redteam light`, or `/redteam full` as a standalone prompt.
+3. Submit the complete objective. The Hook compiles it into a `GoalContract`, with independent operations for single or multiple targets.
+4. `redteam_run` starts or resumes execution and uses `ToolBroker` to invoke available MCP tools.
+5. Host-only tools receive a `next_action_spec`, gate, exit condition, and output contract, then automatically submit their observation to the Runtime.
+6. `TerminalJudge` emits the final result after proving every target criterion, evidence lineage, and cleanup state.
+7. Submit `/redteam off` or `disable red team mode` to return to normal mode.
 
-```text
-进入红队模式
-开启红队模式
-/redteam on
-/redteam light
-/redteam full
-enable red team mode
-```
-
-Submit mode and OPSEC commands as a separate prompt containing only the command; leading and trailing whitespace is allowed. Quoted commands, negations, code examples, command suffixes, and prompts containing multiple commands do not change session state. Enabling `redteam-light` or `redteam-full` injects the shared prepoison and `Reverse.md` supplemental context once; each subsequent task prompt is routed independently through `phase -> router -> pack -> leaf`. Active red-team sessions inject the same supplemental context again on `resume` or `compact`.
-
-### Disable Red Team Mode
-
-```text
-退出红队模式
-关闭红队模式
-/redteam off
-disable red team mode
-```
-
-Disabling the mode stops future structured routing and resets the current session state file to normal without deleting it. The base `instruction.ctf.md` profile and prior task context remain active; use `/clear` or start a new task to remove prior per-session context.
-
-### Mode Reference
-
-| Mode | Default | Use Case |
-|------|---------|----------|
-| `normal` | Yes | Base `instruction.ctf.md` profile active; additional prepoison, structured routing, backstop, and automation inactive |
-| `redteam-light` | No | Targeted security analysis, planning, review |
-| `redteam-full` | No | Constrained red team workflow, operations |
-
-### Automatic New-Session System Prompt Selection
-
-The installer resolves the model in this order: `--model` → `CODEX_MODEL` → target `config.toml` → previous install manifest → source `config.toml` → default. It then writes one system-layer file in this exact order:
-
-1. Existing user `model_instructions_file` content, when configured
-2. `instruction.ctf.md`
-3. Model-routing rules and every configured `Jailbreak.gpt-5.x.md`
-
-The installed `config.toml` points `model_instructions_file` to `./redteam-mode/system-instructions.md`. That system file contains the base instructions, model-routing rules, and every configured GPT-5.x profile. `SessionStart` supplies an initial session-fallback selector, while every accepted `UserPromptSubmit` supplies one authoritative current-turn selector derived from the latest Hook `model` field. The current-turn selector invalidates historical selectors, activates exactly one matching system profile, and leaves every other profile inert.
-
-#### Codex App
-
-After installation, open Codex App normally. The static `model_instructions_file` loads the shared system router; `SessionStart` initializes the profile and each `UserPromptSubmit` refreshes it from the active model. An in-session model change takes effect on the next submitted prompt without a dedicated `/model` Hook. After first install or a hook-content update, trust the installed context hooks in Codex's hook manager.
-
-#### Codex CLI
-
-Ordinary `codex` sessions also use the system router. The installer additionally deploys the optional `redteam-mode/codex-redteam.cmd` and `redteam-mode/codex-redteam` wrappers. The wrapper requires an explicit `--model`, `-m`, or `-c model=...`, rejects conflicting model declarations, and loads only the matching profile through a process-local `model_instructions_file` override. Temporary files live under `redteam-mode/state/system_instructions/` and are removed after normal process exit. The launched process is locked to the selected profile family: compatible variants such as `gpt-5.6-sol` and `gpt-5.6-codex` are allowed, while the next prompt after switching to another profile family is blocked with a bilingual remediation message.
-
-##### Optional Launcher Usage
-
-Use the installed wrapper rather than invoking `launcher.py` directly:
-
-- Global or custom Codex Home: `%CODEX_HOME%\redteam-mode\codex-redteam.cmd` on Windows, or `$CODEX_HOME/redteam-mode/codex-redteam` on macOS/Linux. When `CODEX_HOME` is unset, use `%USERPROFILE%\.codex` or `~/.codex`.
-- Project-level install: `<project>\.codex\redteam-mode\codex-redteam.cmd` on Windows, or `<project>/.codex/redteam-mode/codex-redteam` on macOS/Linux.
-- Direct `python redteam-mode/launcher.py ...` execution is intended only for development and debugging.
-
-Specify the launch model with any one of the supported Codex forms. All unrelated Codex arguments are forwarded unchanged:
+The optional CLI wrapper pins one model-family profile for the current process:
 
 ```bash
-# Long model option
-$CODEX_HOME/redteam-mode/codex-redteam --model gpt-5.6-sol
-
-# Short model option plus other Codex arguments
-$CODEX_HOME/redteam-mode/codex-redteam -m gpt-5.6-codex --sandbox workspace-write
-
-# Config override form
-$CODEX_HOME/redteam-mode/codex-redteam -c model=gpt-5.6-sol --cd /path/to/project
+codex-redteam --model gpt-5.6-sol
 ```
 
-The launcher requires an explicit, non-conflicting model value. It rejects missing or conflicting model declarations and caller-supplied `model_instructions_file` overrides because that setting is managed per process. It creates a single-profile temporary system-instructions file under `$CODEX_HOME/redteam-mode/state/system_instructions/`, passes it to the child Codex process, and deletes it after normal process exit.
+Changing model families requires a new App task or wrapper process so that `model_instructions_file` is reloaded.
 
-The selected process is profile-family locked. Model variants matched by the same configured pattern, such as `gpt-5.6-sol` and `gpt-5.6-codex` under `gpt-5.6*`, remain compatible. If `/model` switches to a different profile family, the next `UserPromptSubmit` is blocked because the process system layer cannot be replaced safely; switch back to the original family or restart through the launcher with the new model.
+### Modes
 
-Override the default mapping in `config.toml`:
-
-```toml
-[redteam.model_prompt_profiles]
-"gpt-5.6*" = "Jailbreak.gpt-5.6.md"
-"gpt-5.5*" = "Jailbreak.gpt-5.5.md"
-"gpt-5.4*" = "Jailbreak.gpt-5.4.md"
-default = "Jailbreak.default.md"
-```
-
-Profile files live under `$CODEX_HOME/prompts/`. Model keys support glob patterns; an unmatched model or missing specialized file falls back to `default`. App and ordinary CLI sessions use the static system catalog plus per-turn Hook selectors and support model-family changes on the next prompt. The optional `codex-redteam` launcher selects one profile before process startup and requires a restart to use a different profile family.
-
-## Automation Tool Policy
-
-Before planning tool use, the automation layer reads the user's local MCP/tool inventory, derives required capabilities, then selects tools in this order:
-
-1. **Prefer these 5 practical tool classes:**
-   - `WebFetch` — content fetch and page analysis
-   - `Browser MCP` — browser automation and engine-backed interaction
-   - `IDA MCP` — binary reverse engineering and protocol analysis
-   - `JADX MCP` — APK decompilation and API extraction
-   - `Current AI Agent` — code generation and AI-assisted analysis using the AI agent the user is currently running
-2. If a preferred tool is unavailable, select an equivalent registered local MCP/tool.
-3. Record `preferred_tool`, `selected_tool`, `capability_match`, `risk`, and `fallback_reason`.
-4. Execute only through Tool Registry → Scope Gate → Executor.
-5. In red-team mode, run active automation by default; execute only when a scoped adapter is registered and all gates pass.
-6. If a required tool, scope, or adapter is missing, block or pivot explicitly instead of pretending execution happened.
-7. Save successful adapter output as artifacts and re-check gates before advancing.
-
-Active adapters are configured explicitly as Python callables. The table key must match the discovered tool name and the value uses `module:function` syntax:
-
-```toml
-[automation.adapters]
-"WebFetch" = "my_codex_adapters:web_fetch"
-```
+| Mode | Default | Typical Use |
+|---|---:|---|
+| `normal` | Yes | Ordinary coding, documentation, and research; no red-team operation or operation doctrine is started |
+| `redteam-light` | No | Explicit durable Goal/Workflow execution through `/redteam on` or `/redteam light` |
+| `redteam-full` | No | Explicit full-mode marker; in v2.0.0 it shares the same Runtime, evidence rules, and TerminalJudge gates as light mode |
 
 ## Validation
 
@@ -316,50 +173,53 @@ Active adapters are configured explicitly as Python callables. The table key mus
 # Install test dependencies
 python -m pip install -r requirements-dev.txt
 
-# Full test suite
+# Run the complete test suite
 python -m pytest -q
 
-# Quick validation
-python scripts/validate.py
+# Validate an installation rooted at the current directory
+python scripts/validate.py --codex-home .
 ```
 
-Validation covers:
-- Installer integrity checks
-- Routing correctness across all phase/pack combinations
-- Mode switching (normal ↔ light ↔ full ↔ off)
-- Loop runtime checks (decision tree, scope gate, adapter execution, retry, artifact saving, report gate)
-- Orchestration gate checks (scope, report, artifact)
-- Prompt-chain verification
-- Model discovery, profile hot switching, session-state updates, and dedicated jailbreak routing
+Installer and test coverage includes:
 
-## Known Limitations
+- Starting the Runtime MCP server and loading all eight workflows.
+- Config merge, transactional upgrade, App/CLI Hooks, model profiles, and uninstall preservation.
+- Concurrent start/recovery, leases, idempotent results, batch cancellation, and cleanup status.
+- Rejection of false terminal states, false evidence, incorrect target binding, and derived evidence without trusted parents.
+- Live stdio/Streamable HTTP MCP, Host Agent handoff, secret redaction, and workflow drift protection.
 
-- This is a **runtime/configuration layer**, not a complete attack platform — it provides routing, context management, adapter-based automation, and evidence gates, not hardcoded exploit code
-- Tool availability depends on the user's local MCP/tool inventory
-- Real execution requires explicitly registered scoped adapters; missing tools, scope, or adapters are blocked or pivoted instead of being treated as successful execution
-- Red-team mode must be explicitly enabled per session
-- Semantic phase detection is a fallback — rule-first matching is more reliable for well-defined task types
+GitHub Actions runs the full suite on Windows, Ubuntu, and macOS with Python 3.11.
 
 ## Contributions & Acknowledgements
+## Known Limitations
+
+- Execution capability depends on the MCP or Host Agent tools currently available; missing capabilities remain as a pending handoff or deferred action.
+- MCP tools whose names, descriptions, and input schemas do not expose their capabilities require explicit `automation.tool_capabilities` entries.
+- `redteam-light` and `redteam-full` share the same engine and terminal rules in v2.0.0; the mode label does not select a separate workflow policy.
+- Each evidence payload is capped at 4 MiB, while normal status output inlines only 64 KiB; larger evidence must be fetched through `redteam_evidence`.
+- New tasks reset to normal mode, and changing model families requires a new task or wrapper process.
+
+## Contributions and Acknowledgements
 
 ### Individual Contributors
 
-- **Mingxi / 洺熙** — suggested adding semantic judgment as fallback for phase detection; proposed removing methodology while subdividing skills for smarter AI behavior
-- **Nirvana** — proposed workflow optimization with overlay installation enablement
-- **PINGS** — offered prompt-chain robustness review
+- **Mingxi / 洺熙** — suggested semantic judgment as a phase-detection fallback and proposed removing the methodology layer while subdividing Skills to improve Agent behavior.
+- **Nirvana** — proposed workflow optimization and overlay installation support.
+- **PINGS** — contributed jailbreak text enhancements and prompt-chain robustness improvements.
 
 ### Reference Projects
 
-Jailbreak,Method layer, routing layer, and skill pack structure draw inspiration from: 
+The earlier routing/Skill design and current runtime research drew from:
 
 - [qiushi-skill](https://github.com/qiushi-L/qiushi-skill)
 - [yaklang/hack-skills](https://github.com/yaklang/hack-skills)
-- [mukul975/Anthropic-Cybersecurity-Skills](https://github.com/mukul975/Anthropic-Cybersecurity-Skills)
-- [MDX-Tom/gpt-5.6-instruct](https://github.com/MDX-Tom/gpt-5.6-instruct)
+- [Anthropic-Cybersecurity-Skills](https://github.com/mukul975/Anthropic-Cybersecurity-Skills)
+- [gpt-5.6-instruct](https://github.com/MDX-Tom/gpt-5.6-instruct)
+
 
 ## Contributing
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for the contribution workflow, coding conventions, and submission requirements.
 
 ## License
 
