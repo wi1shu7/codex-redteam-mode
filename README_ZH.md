@@ -211,4 +211,32 @@ scripts/             事务安装器和 validator
 tests/               Runtime、对抗、Hook 与安装测试
 ```
 
-模型能力释放、专业红队工作流和起点到终态自动化的验收标准见 `CAPABILITY_ACCEPTANCE.md`。
+## 免责声明
+
+本项目**仅用于授权的渗透测试、红队研究和防御性安全实验**。用户在对任何非自有系统进行测试前，必须获得适当授权。作者对未经授权或非法使用不承担任何责任。
+
+## 贡献与致谢
+
+### 个人贡献者
+
+- **Mingxi / 洺熙** — 建议添加语义判断作为 phase 检测 fallback；提议去除 methodology 层并细分 skills 以提升 AI 行为智能度
+- **Nirvana** — 提出工作流优化方案及 overlay 安装启用
+- **PINGS** — 提供 prompt-chain 鲁棒性审查
+
+### 参考项目
+
+方法层、路由层和 skill pack 结构借鉴自：
+
+- [qiushi-skill](https://github.com/qiushi-L/qiushi-skill)
+- [yaklang/hack-skills](https://github.com/yaklang/hack-skills)
+- [mukul975/Anthropic-Cybersecurity-Skills](https://github.com/mukul975/Anthropic-Cybersecurity-Skills)
+- [MDX-Tom/gpt-5.6-instruct](https://github.com/MDX-Tom/gpt-5.6-instruct)
+
+## 贡献
+
+详见 [CONTRIBUTING.md](./CONTRIBUTING.md)。
+
+## 许可证
+
+[MIT](./LICENSE)
+
