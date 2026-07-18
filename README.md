@@ -232,7 +232,14 @@ agents/skills/       single boundary policy skill
 scripts/             transactional installer and validator
 tests/               runtime, adversarial, Hook, and install tests
 ```
-Acknowledgements
+
+## References
+
+The runtime design draws from Codex Skills/MCP guidance, PentestGPT task trees, CAI agent/tool patterns, MITRE CALDERA operations, Atomic Red Team actions, Cybench, and CyberSecEval capability/utility evaluation.
+
+The release acceptance criteria for model capability utilization, professional workflow quality, and start-to-goal automation are tracked in `CAPABILITY_ACCEPTANCE.md`.
+
+## Acknowledgements
 Individual Contributors
 Mingxi / 洺熙 — suggested adding semantic judgment as fallback for phase detection (2026-05-07); proposed removing the methodology layer and subdividing skills for smarter AI behavior during work phases (2026-05-14)
 Nirvana — proposed workflow optimization with overlay installation enablement (2026-05-11)
@@ -244,8 +251,3 @@ qiushi-skill
 yaklang/hack-skills
 mukul975/Anthropic-Cybersecurity-Skills
 Thank you to all contributors and reference projects that helped shape this repository.
-## References
-
-The runtime design draws from Codex Skills/MCP guidance, PentestGPT task trees, CAI agent/tool patterns, MITRE CALDERA operations, Atomic Red Team actions, Cybench, and CyberSecEval capability/utility evaluation.
-
-The release acceptance criteria for model capability utilization, professional workflow quality, and start-to-goal automation are tracked in `CAPABILITY_ACCEPTANCE.md`.
