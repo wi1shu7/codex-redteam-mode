@@ -1,5 +1,7 @@
 # Codex Red-Team Mode
 
+[中文说明](./README_ZH.md)
+
 An opt-in, durable red-team operation runtime for Codex App and Codex CLI.
 
 The project compiles a user objective into a typed `GoalContract` with objective-specific criteria, executes single-domain, cross-domain, or multi-target batch `WorkflowSpec` graphs through live MCP tools, stores an evidence graph, resumes after interruption, and reaches terminal state only when `TerminalJudge` proves every criterion.
