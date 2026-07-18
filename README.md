@@ -8,6 +8,44 @@
 
 An opt-in, durable red-team runtime for Codex App and Codex CLI. It compiles each objective into a criteria-bearing `GoalContract`, executes typed `WorkflowSpec` graphs through live MCP tools, preserves verified evidence, and reaches successful terminal state only after `TerminalJudge` proves every criterion.
 
+## Usage Instructions
+
+Before using this project, you should read the [README](./README_ZH.md) file completely to prevent any issues during use.
+
+### About Model Security Review
+
+1. For `GPT-5.4`, this model does not have `trusted network access`, so you can directly use this project for penetration testing.
+2. For `GPT-5.5` and `GPT-5.6`, there are `other models` on the cloud that monitor the model's output, and if the output violates rules, it will `ban this session`. Therefore, to ensure smooth usage, please make sure: `your ChatGPT account has passed trusted network access`, `use GPT-5.4`, `use Claude-Opus-4-6`, or `use other models without security review`.
+
+### Asking Questions Wisely
+
+1. If you have questions about the content in the **README**, you should submit an **ISSUE**, including the corresponding content from the **README** to seek help, or ask in the **WeChat group** in the same way.
+
+   Do:
+   ```text
+   [Paste the text from the README], I have a question here, how/why/what should I do
+   ```
+   Don't:
+   ```text
+   Why is it different when I open it compared to the video?
+   ```
+
+2. If you have suggestions or ideas for maintaining the project, you can `submit an ISSUE`, `submit a Pull Request`, or `suggest in the WeChat group`.
+
+   Do:
+   ```text
+   I have a suggestion regarding xxx [image], here we can modify/add/delete xxx
+   ```
+   Don't:
+   ```text
+   Can we add a plugin/feature for cracking keys?
+   ```
+
+### Disclaimer
+
+This project is **only for authorized penetration testing, red team research, and defensive security experiments**. Users must obtain proper authorization before testing any systems they don't own. The author assumes no responsibility for unauthorized or illegal use.
+
+## Why This Project
 ## Motivation
 
 Codex can use many security tools, but long-running workflows are vulnerable to session interruption, tool variance, manual result relay, and false completion based on a tool success flag. This project unifies objectives, actions, evidence, recovery, and terminal judgment in one durable execution path:
@@ -152,6 +190,7 @@ Installer and test coverage includes:
 
 GitHub Actions runs the full suite on Windows, Ubuntu, and macOS with Python 3.11.
 
+## Contributions & Acknowledgements
 ## Known Limitations
 
 - Execution capability depends on the MCP or Host Agent tools currently available; missing capabilities remain as a pending handoff or deferred action.
